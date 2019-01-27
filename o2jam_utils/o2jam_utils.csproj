@@ -40,9 +40,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="note_event.cs" />
     <Compile Include="ojm_dumper.cs" />
     <Compile Include="ojn_data.cs" />
     <Compile Include="ojn_dumper.cs" />
+    <Compile Include="osu_converter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

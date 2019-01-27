@@ -10,11 +10,11 @@ namespace o2jam_utils
 {
     public class OJN_Data
     {
-        private int songid;
+        public int songid;
         private char[] signature = new char[4];
         private float encode_version;
-        private int genre;
-        private float bpm;
+        public int genre;
+        public float bpm;
         private short[] level = new short[4];
         private int[] event_count = new int[4];
         private int[] note_count = new int[4];
@@ -25,14 +25,16 @@ namespace o2jam_utils
         private char[] old_genre = new char[20];
         private int bmp_size;
         private int old_file_version;
-        private string title;
-        private string artist;
-        private string noter;
-        private string ojm_file;
+        public string title;
+        public string artist;
+        public string noter;
+        public string ojm_file;
         private int cover_size;
         private int[] time = new int[3];
         private int[] note_offset = new int[3];
         private int cover_offset;
+
+        private MemoryMappedFile ojn_file;
 
         //safer memory mapping i guess...
         private static MemoryMappedFile MemFile(string path)
@@ -57,7 +59,7 @@ namespace o2jam_utils
         //populate our class variables
         public OJN_Data(String path)
         {
-            MemoryMappedFile ojn_file = MemFile(path);
+            ojn_file = MemFile(path);
 
             //312 bytes long i think
             MemoryMappedViewAccessor buf = ojn_file.CreateViewAccessor(0, 312, MemoryMappedFileAccess.Read);
@@ -72,11 +74,11 @@ namespace o2jam_utils
             bpm = buf.ReadSingle(offset); offset += 4;
 
             //some level stuff
-            buf.ReadArray(offset, level, 0, 4); offset += 4;
-            buf.ReadArray(offset, event_count, 0, 3); offset += sizeof(int) * 3;
-            buf.ReadArray(offset, note_count, 0, 3); offset += sizeof(int) * 3;
-            buf.ReadArray(offset, measure_count, 0, 3); offset += sizeof(int) * 3;
-            buf.ReadArray(offset, package_count, 0, 3); offset += sizeof(int) * 3;
+            buf.ReadArray(offset, level, 0, 4); offset += 8;
+            buf.ReadArray(offset, event_count, 0, 3); offset += 12;
+            buf.ReadArray(offset, note_count, 0, 3); offset += 12;
+            buf.ReadArray(offset, measure_count, 0, 3); offset += 12;
+            buf.ReadArray(offset, package_count, 0, 3); offset += 12;
 
             //skip the old variables
             offset += 24;
@@ -86,7 +88,8 @@ namespace o2jam_utils
             //skip old file version
             offset += 4;
 
-            //title and stuff, just assuming it's utf8 for now
+            //title and stuff, just assuming it's utf8 for now, but will
+            //have to deal with gbk and big5
             byte[] raw_title = new byte[64];
             byte[] raw_artist = new byte[32];
             byte[] raw_noter = new byte[32];
@@ -96,6 +99,7 @@ namespace o2jam_utils
 
             byte[] raw_file = new byte[32];
             buf.ReadArray(offset, raw_file, 0, 32); offset += 32;
+            raw_file = raw_file.Where(i => i != 0).ToArray();
 
             //assuming file names should be in unicode...
             ojm_file = System.Text.Encoding.UTF8.GetString(raw_file);
@@ -104,7 +108,7 @@ namespace o2jam_utils
             buf.ReadArray(offset, time, 0, 3); offset += 12;
             buf.ReadArray(offset, note_offset, 0, 3); offset += 12;
             cover_offset = buf.ReadInt32(offset);
-            
+            NotePackage.read_package(ojn_file, note_offset[0], note_offset[1]);
         }
     };
 }
