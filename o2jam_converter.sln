@@ -5,6 +5,10 @@ VisualStudioVersion = 15.0.27703.2047
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "o2jam_converter", "o2jam_converter\o2jam_converter.csproj", "{CBD803BD-28C7-4056-BDCC-5C6D70757904}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "o2jam_utils", "o2jam_utils\o2jam_utils.csproj", "{74734D87-138A-4FE2-8ECA-28C23E19B2C4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "o2jam_debug", "o2jam_debug\o2jam_debug.csproj", "{08974887-3865-452D-A60F-FD74398E8CB6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +19,14 @@ Global
 		{CBD803BD-28C7-4056-BDCC-5C6D70757904}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CBD803BD-28C7-4056-BDCC-5C6D70757904}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CBD803BD-28C7-4056-BDCC-5C6D70757904}.Release|Any CPU.Build.0 = Release|Any CPU
+		{74734D87-138A-4FE2-8ECA-28C23E19B2C4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{74734D87-138A-4FE2-8ECA-28C23E19B2C4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{74734D87-138A-4FE2-8ECA-28C23E19B2C4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{74734D87-138A-4FE2-8ECA-28C23E19B2C4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{08974887-3865-452D-A60F-FD74398E8CB6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{08974887-3865-452D-A60F-FD74398E8CB6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{08974887-3865-452D-A60F-FD74398E8CB6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{08974887-3865-452D-A60F-FD74398E8CB6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
