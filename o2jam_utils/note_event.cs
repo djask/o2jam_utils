@@ -9,7 +9,21 @@ namespace o2jam_utils
 {
     public class NotePackage
     {
-        private class NoteHeader
+
+        public enum channels
+        {
+            MEASURE,
+            BPM_change,
+            NOTE_ONE,
+            NOTE_TWO,
+            NOTE_THREE,
+            NOTE_FOUR,
+            NOTE_FIVE,
+            NOTE_SIX,
+            NOTE_SEVEN
+        };
+
+        public class NoteHeader
         {
             //which "bar" the package is on
             public int measure;
@@ -29,23 +43,70 @@ namespace o2jam_utils
 
             //the number of events
             public short events;
+
+            public NoteEvent[] event_list = null;
+
+            //non-note package
+            public float payload = -1;
         }
 
-        public static void read_package(MemoryMappedFile ojn_file, int start, int end)
+        public class NoteEvent
         {
-            //package size = 12 + (4*no of events)
+            public short value;
+            public byte volume;
+            public byte pan;
+            public byte note_type;
+        }
+
+        public static NoteHeader[] ReadPackage(MemoryMappedFile ojn_file, int start, int end, int N)
+        {
             long pos = 0;
+            //an array of packages
+            NoteHeader[] packages = new NoteHeader[N];
+
             using (var buf = ojn_file.CreateViewAccessor(start, end, MemoryMappedFileAccess.Read))
             {
-                while(pos < (buf.Capacity - buf.PointerOffset))
+                for(int i = 0; i < N; i++)
                 {
-                    NoteHeader header = new NoteHeader();
-                    header.measure = buf.ReadInt32(pos); pos += 4;
-                    header.channel = buf.ReadInt16(pos); pos += 2;
-                    header.events = buf.ReadInt16(pos); pos += 2;
+                    packages[i] = new NoteHeader();
+                    packages[i].measure = buf.ReadInt32(pos); pos += 4;
+                    packages[i].channel = buf.ReadInt16(pos); pos += 2;
+                    packages[i].events = buf.ReadInt16(pos); pos += 2;
+                    int events = packages[i].events;
 
+                    //populate note events
+                    if(packages[i].channel >= 2 && packages[i].channel <= 8)
+                    {
+                        Console.WriteLine((channels)packages[i].channel + " detected note package, measure" + packages[i].measure);
+                        packages[i].event_list = new NoteEvent[packages[i].events];
+                        for(int j = 0; j < events; j++)
+                        {
+                            packages[i].event_list[j] = new NoteEvent();
+                            packages[i].event_list[j].value = buf.ReadInt16(pos); pos += 2;
+                            byte raw_byte = buf.ReadByte(pos); pos++;
+                            packages[i].event_list[j].note_type = buf.ReadByte(pos); pos++;
+
+                            //split the 2nd byte into 2 nybbles
+                            packages[i].event_list[j].volume = (byte)(raw_byte & 0x0F);
+                            packages[i].event_list[j].pan = (byte)(raw_byte & 0xf0 >> 4);
+                        }
+                    }
+                    else if(packages[i].channel < 2)
+                    {
+                        packages[i].payload = buf.ReadSingle(pos);
+                        pos += packages[i].events * 4;
+                        Console.WriteLine((channels)packages[i].channel + " detected change package, measure " + packages[i].measure + " with payload " + packages[i].payload);
+
+                    }
+
+                    //still have no idea how the samples work this is just a placeholder
+                    else if(packages[i].channel >= 9 && packages[i].channel <= 22)
+                    {
+                        pos += packages[i].events * 4;
+                    }
                 }
             }
+            return packages;
         }
     }
 }

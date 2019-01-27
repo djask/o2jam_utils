@@ -201,8 +201,7 @@ namespace o2jam_utils
                 }
 
                 //write the filename
-                String filename = Encoding.UTF8.GetString(sample_name, 0, sample_name.Length);
-                filename = Regex.Replace(filename, "[^A-Za-z1-9]", "") + "_" + unk_sample_type + "-" + note_ref + ".ogg";
+                String filename = unk_sample_type + "-" + note_ref + ".ogg";
                 String out_file = Path.Combine(out_dir, filename);
                 BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create));
                 writer.Write(sample_data);
@@ -269,9 +268,9 @@ namespace o2jam_utils
                 wav_data = rearrange(wav_data);
                 wav_data = acc_xor(wav_data);
 
-                //write the filename
-                String filename = Encoding.UTF8.GetString(sample_name, 0, sample_name.Length);
-                filename = Regex.Replace(filename, "[^A-Za-z0-9]", "") + "_" + sample_id + ".wav";
+                //write the filename can't be bothered finding out the encoding
+                sample_name = sample_name.Where(i => i != 0).ToArray();
+                string filename = sample_id + ".wav";
                 String out_file = Path.Combine(out_dir, filename);
                 BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create));
 
@@ -316,8 +315,10 @@ namespace o2jam_utils
                 file_offset += sample_size;
 
                 //write the filename
-                String filename = Encoding.UTF8.GetString(sample_name, 0, sample_name.Length);
-                filename = Regex.Replace(filename, "[^A-Za-z]", "") + "_" + sample_id + ".ogg";
+                sample_name = sample_name.Where(i => i != 0).ToArray();
+                bool gb2312 = false;
+                string decname = Encoding.GetEncoding(936).GetString(sample_name);
+                string filename = sample_id + ".ogg";
                 String out_file = Path.Combine(out_dir, filename);
                 BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create));
 
