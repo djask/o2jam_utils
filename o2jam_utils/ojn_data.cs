@@ -15,7 +15,7 @@ namespace o2jam_utils
         private static float encode_version;
         public int genre;
         public float bpm;
-        private static short[] level = new short[4];
+        public short[] level = new short[4];
         private static int[] event_count = new int[4];
         private static int[] note_count = new int[4];
         private static int[] measure_count = new int[4];
@@ -131,18 +131,18 @@ namespace o2jam_utils
             writer.Write(tmp);
         }
 
-        public NotePackage.NoteHeader[] DumpEXPackage()
+        public NotePackage.Chart DumpEXPackage()
         {
             return NotePackage.ReadPackage(ojn_file, note_offset[0], note_offset[1], package_count[0]);
         }
 
-        public NotePackage.NoteHeader[] DumpNXPackage()
+        public NotePackage.Chart DumpNXPackage()
         {
             return NotePackage.ReadPackage(ojn_file, note_offset[1], note_offset[2], package_count[1]);
         }
 
         //third difficulty ends at cover offset
-        public NotePackage.NoteHeader[] DumpHXPackage()
+        public NotePackage.Chart DumpHXPackage()
         {
             return NotePackage.ReadPackage(ojn_file, note_offset[2], cover_offset, package_count[2]);
         }
