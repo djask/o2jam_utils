@@ -9,6 +9,13 @@ namespace o2jam_utils
 {
     public class OsuConverter
     {
+        private enum Diff
+        {
+            EX,
+            NX,
+            HX
+        };
+
         public static void OSU_dump(string ojn_path, string out_dir)
         {
             //read ojn headers
@@ -28,8 +35,56 @@ namespace o2jam_utils
             //dump image
             ojn_header.DumpImage(out_folder);
 
-            //write the osu file
-            NotePackage.NoteHeader[] EXPackage = ojn_header.DumpEXPackage();
+
+            //write EX
+            writeDiff(out_folder, ojn_header, Diff.EX);
+
+        }
+
+        private static void writeDiff(string path, OJN_Data ojn_header, Diff diff)
+        {
+            NotePackage.Chart chart;
+            String diffname = null;
+
+            switch (diff)
+            {
+                case Diff.EX:
+                    chart = ojn_header.DumpEXPackage();
+                    diffname = ojn_header.title + "_EX_" + ojn_header.level[0];
+                    break;
+                case Diff.NX:
+                    chart = ojn_header.DumpNXPackage();
+                    diffname = ojn_header.title + "_NX_" + ojn_header.level[1];
+                    break;
+                case Diff.HX:
+                    chart = ojn_header.DumpHXPackage();
+                    diffname = ojn_header.title + "_HX_" + ojn_header.level[2];
+                    break;
+                default:
+                    chart = ojn_header.DumpEXPackage();
+                    diffname = ojn_header.title + "_EX_" + ojn_header.level[0];
+                    break;
+            }
+            diffname += ".osu";
+            diffname = Path.Combine(path, diffname);
+
+        }
+
+        private static string[] genTimings(NotePackage.NoteHeader[] packages)
+        {
+            //elapsed milliseconds
+            int ms_counter = 0;
+            float currbpm = 0;
+            List<string> timings = new List<string>();
+            for(int i = 0; i < packages.Length; i++)
+            {
+                //filter out bpm timings only
+                if(packages[i].channel == 1)
+                {
+                    String temp = " " + ",4,2,2,100,1,0";
+                }
+            }
+            return null;
         }
     }
 }
