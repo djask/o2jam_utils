@@ -274,7 +274,7 @@ namespace o2jam_utils
                 {
                     float end_delta = note.measure_end - next_bpm.measure_start;
                     float end_offset = next_bpm.ms_per_measure * end_delta;
-                    float hit_end = last_bpm.ms_marking + end_offset;
+                    float hit_end = next_bpm.ms_marking + end_offset;
                     osu_note.LN = true;
                     osu_note.ms_end = hit_end;
                 }
