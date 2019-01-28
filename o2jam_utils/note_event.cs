@@ -131,6 +131,7 @@ namespace o2jam_utils
                             timing.measure_start = time;
                             chart.timings.Add(timing);
                             curr_bpm = timing.val;
+
                         }
                     }
                     //populate note events
@@ -163,17 +164,18 @@ namespace o2jam_utils
                             note_event.note_type = buf.ReadByte(pos); pos++;
 
                             //start of a long note, we record the measure time
-                            if (note_event.note_type == 2)
+                            if (note_event.note_type == 2 && start_holds[channel-2] == null)
                             {
                                 start_holds[channel - 2] = note_event;
                                 continue;
                             }
 
                             //the end of a long note, we can put this into the note list
-                            else if(note_event.note_type == 3)
+                            else if(note_event.note_type == 3 && start_holds[channel-2] != null)
                             {
                                 note_event.measure_end = time;
                                 note_event.measure_start = start_holds[channel - 2].measure_start;
+                                start_holds[channel - 2] = null;
                             }
 
 
