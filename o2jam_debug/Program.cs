@@ -27,7 +27,7 @@ namespace o2jam_debug
             //test.DumpImage("D:\\temp");
 
             //testing converting to osu
-            OsuConverter.OSU_dump(@"D:\Games\o2servers\DPv3\Music\o2ma2812.ojn", @"D:\Temp\output");
+            OsuConverter.OSU_dump(@"D:\temp\sampleo2jm\o2ma1374.ojn", @"D:\Games\osu!\Songs");
 
             //o2jam_utils.OJM_Dump.dumpFile(@"D:\temp\sampleo2jm\o2ma1183.ojm", @"D:\temp\sampleo2jm");
         }
