@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.IO;
+using System.IO.MemoryMappedFiles;
 
 namespace o2jam_utils
 {
@@ -15,6 +16,22 @@ namespace o2jam_utils
             NX,
             HX
         };
+
+        //timings for bpm changes plus their ms markings for osu format
+        private class MSTiming
+        {
+            public float ms_marking;
+            public float ms_per_measure;
+            public float measure_start;
+        }
+
+        private class OsuNote
+        {
+            public bool LN;
+            public float ms_start;
+            public float ms_end = -1;
+            public string sample_file = null;
+        }
 
         public static void OSU_dump(string ojn_path, string out_dir)
         {
@@ -41,47 +58,195 @@ namespace o2jam_utils
 
         }
 
+        private static string GetSafeFilename(string filename)
+        {
+            return string.Join("_", filename.Split(Path.GetInvalidFileNameChars()));
+        }
+
         private static void writeDiff(string path, OJN_Data ojn_header, Diff diff)
         {
             NotePackage.Chart chart;
             String diffname = null;
+            String diffex = null;
 
             switch (diff)
             {
+                default:
                 case Diff.EX:
                     chart = ojn_header.DumpEXPackage();
-                    diffname = ojn_header.title + "_EX_" + ojn_header.level[0];
+                    diffex = $"_EX_LVL{ojn_header.level[0]}";
                     break;
                 case Diff.NX:
                     chart = ojn_header.DumpNXPackage();
-                    diffname = ojn_header.title + "_NX_" + ojn_header.level[1];
+                    diffex = $"_NX_LVL{ojn_header.level[1]}";
                     break;
                 case Diff.HX:
                     chart = ojn_header.DumpHXPackage();
-                    diffname = ojn_header.title + "_HX_" + ojn_header.level[2];
-                    break;
-                default:
-                    chart = ojn_header.DumpEXPackage();
-                    diffname = ojn_header.title + "_EX_" + ojn_header.level[0];
+                    diffex = $"HX_LVL{ojn_header.level[2]}";
                     break;
             }
-            diffname += ".osu";
+            diffname = $"{ojn_header.title}{diffex}.osu";
+            diffname = GetSafeFilename(diffname);
             diffname = Path.Combine(path, diffname);
+
+            string[] general =
+            {
+                "[General]",
+                "AudioFilename: virtual",
+                "AudioLeadIn: 0",
+                "PreviewTime: 0",
+                "Countdown: 0",
+                "SampleSet: Soft",
+                "StackLeniency: 0.7",
+                "Mode: 3",
+                "LetterboxInBreaks: 0",
+                "SpecialStyle: 0",
+                "WidescreenStoryboard: 0",
+            };
+
+            string[] editor =
+            {
+                "[Editor]",
+                "DistanceSpacing: 1.3",
+                "BeatDivisor: 4",
+                "GridSize: 8",
+                "TimelineZoom: 1",
+                "\n"
+            };
+
+            string[] metadata =
+            {
+                "[Metadata]",
+                $"Title:{ojn_header.title}",
+                $"TitleUnicode:{ojn_header.title}",
+                $"Artist:{ojn_header.artist}",
+                $"ArtistUnicode:{ojn_header.artist}",
+                $"Creator:{ojn_header.noter}",
+                $"Version:7k{diffex}",
+                "Source:o2jam",
+                $"Tags:o2jam {ojn_header.ojm_file}",
+                $"BeatmapID:{ojn_header.songid}",
+                $"BeatmapSetID:{ojn_header.songid}",
+                "\n"
+            };
+
+            string[] difficulty =
+            {
+                "[Difficulty]",
+                "HPDrainRate:5",
+                "CircleSize:7",
+                "OverallDifficulty:5",
+                "ApproachRate:5",
+                "SliderMultiplier:1.4",
+                "SliderTickRate:1",
+                "\n"
+            };
+
+            File.WriteAllText(diffname, "osu file format v14\n\n");
+            File.AppendAllLines(diffname, general);
+            File.AppendAllLines(diffname, editor);
+            File.AppendAllLines(diffname, metadata);
+            File.AppendAllLines(diffname, difficulty);
+
+            File.AppendAllText(diffname, "[Events]\n");
+            //genEvents(chart.samples);
+
+            File.AppendAllText(diffname, "[TimingPoints]\n");
+            List<MSTiming> ms_timing = genTimings(chart.timings);
+
+            File.AppendAllText(diffname, "[HitObjects]\n");
+            genNotes(chart.notes, ms_timing);
 
         }
 
-        private static string[] genTimings(NotePackage.NoteHeader[] packages)
+        private static string[] genEvents(List<NotePackage.AutoplaySample> samples)
         {
-            //elapsed milliseconds
-            int ms_counter = 0;
-            float currbpm = 0;
-            List<string> timings = new List<string>();
-            for(int i = 0; i < packages.Length; i++)
+            foreach (var sample in samples)
             {
-                //filter out bpm timings only
-                if(packages[i].channel == 1)
+                Console.WriteLine($"Sample,{sample.measure_start},0,\"OGG{sample.sample_no}.ogg\",70");
+            }
+            return null;
+        }
+
+        private static List<MSTiming> genTimings(List<NotePackage.BPMChange> timings)
+        {
+            List<MSTiming> osu_timings = new List<MSTiming>();
+            //elapsed milliseconds
+            NotePackage.BPMChange prev = null;
+            float milliseconds = 0.0f;
+
+            foreach (var timing in timings)
+            {
+                // Console.WriteLine($"!timing change {timing.val} on {timing.measure_start}");
+                MSTiming ms_time = new MSTiming();
+
+                if (prev == null)
                 {
-                    String temp = " " + ",4,2,2,100,1,0";
+                    prev = timing;
+                    ms_time.measure_start = timing.measure_start;
+                    ms_time.ms_marking = 0;
+                    ms_time.ms_per_measure = 240 / timing.val * 1000;
+                    osu_timings.Add(ms_time);
+                    continue;
+                }
+                float ms_per_measure = 240 / prev.val * 1000;
+                float delta = timing.measure_start - prev.measure_start;
+                milliseconds += delta * ms_per_measure;
+                prev = timing;
+
+                ms_time.measure_start = timing.measure_start;
+                ms_time.ms_marking = milliseconds;
+                ms_time.ms_per_measure = ms_per_measure;
+                osu_timings.Add(ms_time);
+            }
+            return osu_timings;
+        }
+
+        private static string[] genNotes(List<NotePackage.NoteEvent> notes, List<MSTiming> timings)
+        {
+            foreach(var note in notes)
+            {
+                //grab the last bpm change
+                MSTiming last_bpm = timings[0];
+
+                //incase the end of a LN is after a bpm change
+                MSTiming next_bpm_change = null;
+                bool ln_bpm_change = false;
+
+                foreach(var timing in timings)
+                {
+                    if (timing.measure_start < note.measure_start)
+                    {
+                        last_bpm = timing;
+                        break;
+                    }
+                }
+
+                //check for bpm changes throughout a long note
+                if (note.note_type == 3)
+                {
+                    foreach (var timing in timings)
+                    {
+                        if (note.measure_end > timing.measure_start)
+                        {
+                            next_bpm_change = timing;
+                            ln_bpm_change = true;
+                            break;
+                        }
+                    }
+                }
+
+                //difference between our note and the start of the last bpm
+                float start_delta = note.measure_start - last_bpm.measure_start;
+
+                //grab the ms base for the start of the bpm change and add 
+                float start_offset = last_bpm.ms_per_measure * start_delta;
+                float hit_start = last_bpm.ms_marking + start_offset;
+
+                //grab the offset for the end of a long note (if needed)
+                if(note.note_type == 3)
+                {
+
                 }
             }
             return null;

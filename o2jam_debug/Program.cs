@@ -23,8 +23,8 @@ namespace o2jam_debug
 
         static void Main(string[] args)
         {
-            OJN_Data test = new OJN_Data(@"D:\temp\sampleo2jm\o2ma1183.ojn");
-            test.DumpImage("D:\\temp");
+            //OJN_Data test = new OJN_Data(@"D:\temp\sampleo2jm\o2ma1183.ojn");
+            //test.DumpImage("D:\\temp");
 
             //testing converting to osu
             OsuConverter.OSU_dump(@"D:\temp\sampleo2jm\o2ma1183.ojn", @"D:\temp");

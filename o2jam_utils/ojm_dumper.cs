@@ -14,8 +14,9 @@ namespace o2jam_utils
 {
     public class OJM_Dump
     {
-        //according to ojm documentation
-        private static readonly byte[] nami = new byte[] { 0x6E, 0x61, 0x6D, 0x69 };
+        /** the xor mask used in the M30 format */
+        private readonly static byte[] mask_nami = new byte[] { 0x6E, 0x61, 0x6D, 0x69 }; // nami
+        private readonly static byte[] mask_0412 = new byte[] { 0x30, 0x34, 0x31, 0x32 }; // 0412
 
 
         /** the M30 signature, "M30\0" in little endian */
@@ -67,33 +68,6 @@ namespace o2jam_utils
             0x08, 0x0C, 0x09, 0x06, 0x0F, 0x10, 0x05, 0x0A,
             0x04, 0x00
         };
-
-        /** some weird encryption */
-        private static int acc_keybyte = 0xFF;
-        private static int acc_counter = 0;
-        private static byte[] acc_xor(byte[] buf)
-        {
-            int temp = 0;
-            byte this_byte = 0;
-            for (int i = 0; i < buf.Length; i++)
-            {
-                temp = this_byte = buf[i];
-
-                if (((acc_keybyte << acc_counter) & 0x80) != 0)
-                {
-                    this_byte = (byte)~this_byte;
-                }
-
-                buf[i] = this_byte;
-                acc_counter++;
-                if (acc_counter > 7)
-                {
-                    acc_counter = 0;
-                    acc_keybyte = temp;
-                }
-            }
-            return buf;
-        }
 
         //safer memory mapping i guess...
         private static MemoryMappedFile MemFile(string path)
@@ -153,11 +127,10 @@ namespace o2jam_utils
             BinaryReader reader = new BinaryReader(buf);
 
             // header
-            byte[] unk_fixed = reader.ReadBytes(4);
-            byte nami_encoded = reader.ReadByte();
-            byte[] unk_fixed2 = reader.ReadBytes(3);
-            short sample_count = reader.ReadInt16();
-            byte[] unk_fixed3 = reader.ReadBytes(6);
+            int file_format_version = reader.ReadInt32();
+            int encryption_flag = reader.ReadInt32();
+            int sample_count = reader.ReadInt32();
+            int sample_offset = reader.ReadInt32();
             int payload_size = reader.ReadInt32();
             int padding = reader.ReadInt32();
 
@@ -174,37 +147,55 @@ namespace o2jam_utils
 
                 byte[] sample_name = reader.ReadBytes(32);
                 int sample_size = reader.ReadInt32();
-                byte unk_sample_type = reader.ReadByte();
-                byte unk_off = reader.ReadByte();
-                short fixed_2 = reader.ReadInt16();
-                int unk_flag = reader.ReadInt32();
+
+                short codec_code = reader.ReadInt16();
+                short codec_code2 = reader.ReadInt16();
+
+                int music_flag = reader.ReadInt32();
                 short note_ref = reader.ReadInt16();
                 short unk_zero = reader.ReadInt16();
-                byte[] unk_wut = reader.ReadBytes(3);
-                byte unk_counter = reader.ReadByte();
+                int pcm_samples = reader.ReadInt32();
+
                 byte[] sample_data = reader.ReadBytes(sample_size);
 
-                if (nami_encoded > 0) namiXOR(sample_data);
+                switch (encryption_flag)
+                {
+                    case 0: break; //Let it pass
+                    case 16: M30_xor(sample_data, mask_nami); break;
+                    case 32: M30_xor(sample_data, mask_0412); break;
+                    default: break;
+                }
 
-                int value = note_ref;
+                int value = note_ref + 2;
 
                 //background note
-                if(unk_sample_type == 0)
+                if (codec_code == 0)
                 {
                     value = 1000 + note_ref;
                 }
 
                 //unknown sound
-                else if(unk_sample_type != 5)
+                else if (codec_code != 5)
                 {
                     Console.WriteLine("not recognized sample type");
                 }
 
                 //write the filename
-                String filename = unk_sample_type + "-" + note_ref + ".ogg";
+                String filename = $"OGG{note_ref}.ogg";
                 String out_file = Path.Combine(out_dir, filename);
                 BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create));
                 writer.Write(sample_data);
+            }
+        }
+
+        private static void M30_xor(byte[] array, byte[] mask)
+        {
+            for (int i = 0; i + 3 < array.Length; i += 4)
+            {
+                array[i + 0] ^= mask[0];
+                array[i + 1] ^= mask[1];
+                array[i + 2] ^= mask[2];
+                array[i + 3] ^= mask[3];
             }
         }
 
@@ -221,7 +212,7 @@ namespace o2jam_utils
             int filesize = reader.ReadInt32();
 
             int file_offset = 20;
-            int sample_id = 0;
+            int sample_id = 2;
 
             acc_keybyte = 0xFF;
             acc_counter = 0;
@@ -266,11 +257,11 @@ namespace o2jam_utils
                 byte[] wav_data = new byte[chunk_size];
                 buf.Read(wav_data, 0, chunk_size);
                 wav_data = rearrange(wav_data);
-                wav_data = acc_xor(wav_data);
+                wav_data = OMC_xor(wav_data);
 
                 //write the filename can't be bothered finding out the encoding
                 sample_name = sample_name.Where(i => i != 0).ToArray();
-                string filename = sample_id + ".wav";
+                string filename = $"WAV{sample_id}.wav";
                 String out_file = Path.Combine(out_dir, filename);
                 BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create));
 
@@ -293,9 +284,9 @@ namespace o2jam_utils
 
             }
 
-            sample_id = 1000; //ogg uses 1000+
+            sample_id = 1002; //ogg uses 1000+
             byte[] tmp_buffer = new byte[1024];
-            while(file_offset < filesize) //read ogg data
+            while (file_offset < filesize) //read ogg data
             {
                 buf = f.CreateViewStream(file_offset, 36, MemoryMappedFileAccess.Read);
                 reader = new BinaryReader(buf);
@@ -304,7 +295,7 @@ namespace o2jam_utils
                 byte[] sample_name = reader.ReadBytes(32);
                 int sample_size = reader.ReadInt32();
 
-                if(sample_size == 0)
+                if (sample_size == 0)
                 {
                     sample_id++;
                     continue;
@@ -318,7 +309,7 @@ namespace o2jam_utils
                 sample_name = sample_name.Where(i => i != 0).ToArray();
                 bool gb2312 = false;
                 string decname = Encoding.GetEncoding(936).GetString(sample_name);
-                string filename = sample_id + ".ogg";
+                string filename = $"OGG{sample_id}.ogg";
                 String out_file = Path.Combine(out_dir, filename);
                 BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create));
 
@@ -331,7 +322,33 @@ namespace o2jam_utils
                 sample_id++;
 
             }
+        }
 
+        /** some weird encryption */
+        private static int acc_keybyte = 0xFF;
+        private static int acc_counter = 0;
+        private static byte[] OMC_xor(byte[] buf)
+        {
+            int temp;
+            byte this_byte;
+            for (int i = 0; i < buf.Length; i++)
+            {
+                temp = this_byte = buf[i];
+
+                if (((acc_keybyte << acc_counter) & 0x80) != 0)
+                {
+                    this_byte = (byte)~this_byte;
+                }
+
+                buf[i] = this_byte;
+                acc_counter++;
+                if (acc_counter > 7)
+                {
+                    acc_counter = 0;
+                    acc_keybyte = temp;
+                }
+            }
+            return buf;
         }
 
         private static byte[] rearrange(byte[] encoded_data)
@@ -350,21 +367,7 @@ namespace o2jam_utils
                 System.Array.ConstrainedCopy(encoded_data, i, raw_data, REARRANGE_TABLE[key], block_size);
                 key++;
             }
-
             return raw_data;
-
-
-        }
-
-        private static void namiXOR(byte[] array)
-        {
-            for(int i = 0; i+3 < array.Length; i+=4)
-            {
-                for(int d = 0; d < 4; d++)
-                {
-                    array[i + d] ^= nami[d];
-                }
-            }
         }
     }
 }
