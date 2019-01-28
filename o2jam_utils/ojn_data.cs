@@ -11,28 +11,28 @@ namespace o2jam_utils
     public class OJN_Data
     {
         public int songid;
-        private static char[] signature = new char[4];
-        private static float encode_version;
+        private char[] signature = new char[4];
+        private float encode_version;
         public int genre;
         public float bpm;
         public short[] level = new short[4];
-        private static int[] event_count = new int[4];
-        private static int[] note_count = new int[4];
-        private static int[] measure_count = new int[4];
-        private static int[] package_count = new int[4];
-        private static short old_encode_version;
-        private static short old_songid;
-        private static char[] old_genre = new char[20];
-        private static int bmp_size;
-        private static int old_file_version;
+        private int[] event_count = new int[4];
+        private int[] note_count = new int[4];
+        private int[] measure_count = new int[4];
+        public int[] package_count = new int[4];
+        private short old_encode_version;
+        private short old_songid;
+        private char[] old_genre = new char[20];
+        private int bmp_size;
+        private int old_file_version;
         public string title;
         public string artist;
         public string noter;
         public string ojm_file;
-        private static int cover_size;
-        private static int[] time = new int[3];
-        private static int[] note_offset = new int[3];
-        private static int cover_offset;
+        private int cover_size;
+        private int[] time = new int[3];
+        public int[] note_offset = new int[3];
+        public int cover_offset;
 
         private static MemoryMappedFile ojn_file;
 
@@ -102,8 +102,8 @@ namespace o2jam_utils
             raw_noter = raw_noter.Where(i => i != 0).ToArray();
 
             title = Encoding.GetEncoding(936).GetString(raw_title);
-            artist = Encoding.GetEncoding(936).GetString(raw_title);
-            noter = Encoding.GetEncoding(936).GetString(raw_title);
+            artist = Encoding.GetEncoding(936).GetString(raw_artist);
+            noter = Encoding.GetEncoding(936).GetString(raw_noter);
 
             byte[] raw_file = new byte[32];
             buf.ReadArray(offset, raw_file, 0, 32); offset += 32;
@@ -126,25 +126,25 @@ namespace o2jam_utils
             String filename = "bg.jpg";
             String path = Path.Combine(out_dir, filename);
             BinaryWriter writer = new BinaryWriter(File.Open(path, FileMode.Create));
-            byte[] tmp = new byte[cover_offset];
+            byte[] tmp = new byte[cover_size];
             buf.ReadArray(0, tmp, 0, cover_size);
             writer.Write(tmp);
         }
 
         public NotePackage.Chart DumpEXPackage()
         {
-            return NotePackage.ReadPackage(ojn_file, note_offset[0], note_offset[1], package_count[0]);
+            return NotePackage.ReadPackage(ojn_file, this, 0);
         }
 
         public NotePackage.Chart DumpNXPackage()
         {
-            return NotePackage.ReadPackage(ojn_file, note_offset[1], note_offset[2], package_count[1]);
+            return NotePackage.ReadPackage(ojn_file, this, 1);
         }
 
         //third difficulty ends at cover offset
         public NotePackage.Chart DumpHXPackage()
         {
-            return NotePackage.ReadPackage(ojn_file, note_offset[2], cover_offset, package_count[2]);
+            return NotePackage.ReadPackage(ojn_file, this, 2);
         }
     };
 }

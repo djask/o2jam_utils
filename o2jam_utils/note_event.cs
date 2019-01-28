@@ -9,33 +9,19 @@ namespace o2jam_utils
 {
     public class NotePackage
     {
-
-        public enum channels
-        {
-            MEASURE,
-            BPM_change,
-            NOTE_ONE,
-            NOTE_TWO,
-            NOTE_THREE,
-            NOTE_FOUR,
-            NOTE_FIVE,
-            NOTE_SIX,
-            NOTE_SEVEN
-        };
-
         public class Chart
         {
             //chart has timings, note events
-            public List<NoteEvent> ch_one = new List<NoteEvent>();
-            public List<NoteEvent> ch_two = new List<NoteEvent>();
-            public List<NoteEvent> ch_three = new List<NoteEvent>();
-            public List<NoteEvent> ch_four = new List<NoteEvent>();
-            public List<NoteEvent> ch_five = new List<NoteEvent>();
-            public List<NoteEvent> ch_six = new List<NoteEvent>();
-            public List<NoteEvent> ch_seven = new List<NoteEvent>();
+            public List<NoteEvent> notes = new List<NoteEvent>();
 
             //timings list
             public List<BPMChange> timings = new List<BPMChange>();
+
+            //autoplay samles
+            public List<AutoplaySample> samples = new List<AutoplaySample>();
+
+            //how many milliseconds since the start of the measure
+            public int[] elapsed_time;
         }
 
         public class NoteHeader
@@ -62,6 +48,9 @@ namespace o2jam_utils
 
         public class NoteEvent
         {
+            public int channel;
+            public int bpm;
+
             public short value;
             public byte volume;
             public byte pan;
@@ -77,20 +66,39 @@ namespace o2jam_utils
         public class BPMChange
         {
             public float val;
-            public int measure;
+            public float measure_start;
         }
 
-        public static Chart ReadPackage(MemoryMappedFile ojn_file, int start, int end, int N)
+        public class AutoplaySample
+        {
+            public int sample_no;
+            public int channel;
+            public float measure_start;
+        }
+
+        public static Chart ReadPackage(MemoryMappedFile ojn_file, OJN_Data header, int diff)
         {
             long pos = 0;
             //an array of packages
             Chart chart = new Chart();
 
+            //get the initial bpm timing (not sure if needed yet)...
+            BPMChange start_bpm = new BPMChange();
+            start_bpm.val = header.bpm;
+            start_bpm.measure_start = 0;
+            chart.timings.Add(start_bpm);
+
             //some variables to keep track of stuff
             //start of long holds
             NoteEvent[] start_holds = new NoteEvent[7];
-            float measure_mult = 1.0f;
+            float curr_bpm = 0;
 
+            int start, end = -1;
+            start = header.note_offset[diff];
+            if (diff < 2) end = header.note_offset[diff + 1];
+            else end = header.cover_offset;
+
+            int N = header.package_count[diff];
 
             using (var buf = ojn_file.CreateViewAccessor(start, end, MemoryMappedFileAccess.Read))
             {
@@ -100,6 +108,7 @@ namespace o2jam_utils
                     short channel = buf.ReadInt16(pos); pos += 2;
                     short events = buf.ReadInt16(pos); pos += 2;
 
+                    //hope that this doesnt occur
                     if (channel == 0)
                     {
                         pos += events * 4;
@@ -109,18 +118,25 @@ namespace o2jam_utils
                     //get bpm change timing
                     if (channel == 1)
                     {
-                        BPMChange timing = new BPMChange();
-                        timing.val = buf.ReadSingle(pos);
-                        timing.measure = measure;
-                        pos += events * 4;
-                        Console.WriteLine((channels)channel + " detected change package, measure " + measure + " with payload " + timing.val);
-                        chart.timings.Add(timing);
+                        for(int j = 0; j < events; j++)
+                        {
+                            float time = measure;
+                            time += ((j + 1) / ((float)events));
 
+                            float val = buf.ReadSingle(pos); pos += 4;
+                            if (val == 0) continue;
+
+                            BPMChange timing = new BPMChange();
+                            timing.val = val;
+                            timing.measure_start = time;
+                            chart.timings.Add(timing);
+                            curr_bpm = timing.val;
+                        }
                     }
                     //populate note events
                     else if (channel >= 2 && channel <= 8)
                     {
-                        Console.WriteLine((channels)channel + " detected note package, measure" + measure);
+                        //Console.WriteLine((channels)channel + " detected note package, measure" + measure);
                         for(int j = 0; j < events; j++)
                         {
                             short val = buf.ReadInt16(pos); pos += 2;
@@ -166,43 +182,48 @@ namespace o2jam_utils
                             else if(note_event.note_type == 0)
                                 note_event.measure_end = -1;
 
+                            note_event.channel = channel - 2;
+
                             //add to chart object
-                            switch (channel)
-                            {
-                                case 2:
-                                    chart.ch_one.Add(note_event);
-                                    break;
-                                case 3:
-                                    chart.ch_two.Add(note_event);
-                                    break;
-                                case 4:
-                                    chart.ch_three.Add(note_event);
-                                    break;
-                                case 5:
-                                    chart.ch_four.Add(note_event);
-                                    break;
-                                case 6:
-                                    chart.ch_five.Add(note_event);
-                                    break;
-                                case 7:
-                                    chart.ch_six.Add(note_event);
-                                    break;
-                                case 8:
-                                    chart.ch_seven.Add(note_event);
-                                    break;
-                                default:
-                                    break;
-                            }
+                            chart.notes.Add(note_event);
                         }
                     }
 
                     //still have no idea how the samples work this is just a placeholder
+                    //seems like autoplay samples independent of note hits
+                    //probably if amount of these is less than 20, then we can use audio mode on osu
                     else if(channel >= 9 && channel <= 22)
                     {
-                        pos += events * 4;
+                        //Console.WriteLine($"Encountered sound events on measure {measure} channel {channel}");
+                        for(int d = 0; d < events; d++)
+                        {
+                            float time = measure;
+                            time += ((d + 1) / ((float)events));
+
+                            AutoplaySample sample = new AutoplaySample();
+                            sample.sample_no = buf.ReadInt32(pos); pos += 4;
+                            sample.measure_start = time;
+                            sample.channel = channel;
+                            chart.samples.Add(sample);
+                            //Console.WriteLine($"event {d} with val {sample.sample_no}");
+                        }
+                        //pos += events * 4;
                     }
                 }
             }
+
+            //sort chart by start time, multiple notes on the same timing sort from smallest to largest channel
+            chart.notes.Sort(
+                delegate (NoteEvent p1, NoteEvent p2)
+                {
+                    int time = p1.measure_start.CompareTo(p2.measure_start);
+                    if (time == 0)
+                    {
+                        return p1.channel.CompareTo(p2.channel);
+                    }
+                    return time;
+                }
+            );
             return chart;
         }
     }
