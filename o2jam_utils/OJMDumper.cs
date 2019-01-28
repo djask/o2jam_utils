@@ -10,9 +10,9 @@ using System.Text.RegularExpressions;
 
 /* a c# implementation of the ojm dumper based on information from open2jam */
 
-namespace o2jam_utils
+namespace O2JamUtils
 {
-    public class OJM_Dump
+    public class OJMDump
     {
         /** the xor mask used in the M30 format */
         private readonly static byte[] mask_nami = new byte[] { 0x6E, 0x61, 0x6D, 0x69 }; // nami
@@ -69,41 +69,21 @@ namespace o2jam_utils
             0x04, 0x00
         };
 
-        //safer memory mapping i guess...
-        private static MemoryMappedFile MemFile(string path)
-        {
-            return MemoryMappedFile.CreateFromFile(
-                      File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read),
-                      //not mapping to a name
-                      null,
-                      //use the file's actual size
-                      0L,
-                      //read only access
-                      MemoryMappedFileAccess.Read,
-                      //not configuring security
-                      null,
-                      //adjust as needed
-                      HandleInheritability.None,
-                      //close the previously passed in stream when done
-                      false);
-
-        }
-
-        public static String getType(string path)
+        public static String GetType(string path)
         {
             byte[] signature = new byte[3];
-            using (MemoryMappedFile f = MemFile(path))
+            using (MemoryMappedFile f = Helpers.MemFile(path))
             using (MemoryMappedViewStream vs = f.CreateViewStream(0, 0, MemoryMappedFileAccess.Read))
             {
                 vs.Read(signature, 0, signature.Length);
             }
-            return System.Text.Encoding.Default.GetString(signature);
+            return Encoding.Default.GetString(signature);
         }
 
-        public static void dumpFile(string path, string outdir)
+        public static void DumpFile(string path, string outdir)
         {
             int signature;
-            MemoryMappedFile f = MemFile(path);
+            MemoryMappedFile f = Helpers.MemFile(path);
 
             using (MemoryMappedViewStream vs = f.CreateViewStream(0L, 0L, MemoryMappedFileAccess.Read))
             using (BinaryReader reader = new BinaryReader(vs))
@@ -112,16 +92,16 @@ namespace o2jam_utils
             switch (signature)
             {
                 case M30_SIGNATURE:
-                    parseM30(f, path, outdir);
+                    ParseM30(f, path, outdir);
                     break;
                 case OMC_SIGNATURE:
                 case OJM_SIGNATURE:
-                    parseOMC(f, outdir);
+                    ParseOMC(f, outdir);
                     break;
             }
         }
 
-        private static void parseM30(MemoryMappedFile f, String path, String out_dir)
+        private static void ParseM30(MemoryMappedFile f, String path, String out_dir)
         {
             MemoryMappedViewStream buf = f.CreateViewStream(4,24, MemoryMappedFileAccess.Read);
             BinaryReader reader = new BinaryReader(buf);
@@ -200,7 +180,7 @@ namespace o2jam_utils
             }
         }
 
-        private static void parseOMC(MemoryMappedFile f, String out_dir)
+        private static void ParseOMC(MemoryMappedFile f, String out_dir)
         {
             MemoryMappedViewStream buf = f.CreateViewStream(4, 16, MemoryMappedFileAccess.Read);
             BinaryReader reader = new BinaryReader(buf);
@@ -257,7 +237,7 @@ namespace o2jam_utils
                 //basically get remaining data
                 byte[] wav_data = new byte[chunk_size];
                 buf.Read(wav_data, 0, chunk_size);
-                wav_data = rearrange(wav_data);
+                wav_data = Rearrange(wav_data);
                 wav_data = OMC_xor(wav_data);
 
                 //write the filename can't be bothered finding out the encoding
@@ -308,7 +288,6 @@ namespace o2jam_utils
 
                 //write the filename
                 sample_name = sample_name.Where(i => i != 0).ToArray();
-                bool gb2312 = false;
                 string decname = Encoding.GetEncoding(936).GetString(sample_name);
                 string filename = $"OGG{sample_id}.ogg";
                 String out_file = Path.Combine(out_dir, filename);
@@ -352,7 +331,7 @@ namespace o2jam_utils
             return buf;
         }
 
-        private static byte[] rearrange(byte[] encoded_data)
+        private static byte[] Rearrange(byte[] encoded_data)
         {
             int len = encoded_data.Length;
             int key = ((len % 17) << 4) + (len % 17);
