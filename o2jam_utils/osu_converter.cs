@@ -28,6 +28,7 @@ namespace o2jam_utils
         private class OsuNote
         {
             public bool LN;
+            public int channel;
             public float ms_start;
             public float ms_end = -1;
             public string sample_file = null;
@@ -55,6 +56,11 @@ namespace o2jam_utils
 
             //write EX
             writeDiff(out_folder, ojn_header, Diff.EX);
+
+            //write NX
+            writeDiff(out_folder, ojn_header, Diff.NX);
+            //write HX
+
 
         }
 
@@ -99,20 +105,9 @@ namespace o2jam_utils
                 "SampleSet: Soft",
                 "StackLeniency: 0.7",
                 "Mode: 3",
-                "LetterboxInBreaks: 0",
-                "SpecialStyle: 0",
-                "WidescreenStoryboard: 0",
+                "LetterboxInBreaks: 0\n\n",
             };
 
-            string[] editor =
-            {
-                "[Editor]",
-                "DistanceSpacing: 1.3",
-                "BeatDivisor: 4",
-                "GridSize: 8",
-                "TimelineZoom: 1",
-                "\n"
-            };
 
             string[] metadata =
             {
@@ -142,21 +137,52 @@ namespace o2jam_utils
                 "\n"
             };
 
-            File.WriteAllText(diffname, "osu file format v14\n\n");
-            File.AppendAllLines(diffname, general);
-            File.AppendAllLines(diffname, editor);
-            File.AppendAllLines(diffname, metadata);
-            File.AppendAllLines(diffname, difficulty);
+            string[] events =
+{
+                "[Events]",
+                "0,0,\"bg.jpg\"",
+                "\n"
+            };
 
-            File.AppendAllText(diffname, "[Events]\n");
-            //genEvents(chart.samples);
-
-            File.AppendAllText(diffname, "[TimingPoints]\n");
             List<MSTiming> ms_timing = genTimings(chart.timings);
+            List<OsuNote> note_list = genNotes(chart.notes, ms_timing);
 
-            File.AppendAllText(diffname, "[HitObjects]\n");
-            genNotes(chart.notes, ms_timing);
+            //as per osu specification
+            int[] column_map = new int[7]{ 36,109,182,255,328,401,474};
+            using (StreamWriter w = new StreamWriter(File.Open(diffname, FileMode.Create)))
+            {
+                w.Write("osu file format v14\n\n");
+                foreach (var l in general) w.WriteLine(l);
+                foreach (var l in metadata) w.WriteLine(l);
+                foreach (var l in difficulty) w.WriteLine(l);
+                foreach (var l in events) w.WriteLine(l);
 
+                w.WriteLine("[TimingPoints]");
+                foreach (var timing in ms_timing)
+                {
+                    float bpm = 240 / timing.ms_per_measure * 1000;
+                    float ms_per_beat = 60000 / bpm;
+                    string line = $"{(int)timing.ms_marking},{(int)ms_per_beat},4,2,2,100,1,0\n";
+                    w.Write(line);
+                }
+
+                w.WriteLine("\n\n[HitObjects]");
+
+
+                foreach (var note in note_list)
+                {
+                    string line;
+                    if (note.LN)
+                    {
+                        line = $"{column_map[note.channel]},0,{(int)note.ms_start},128,0,{(int)note.ms_end}:0:0:0:0:{note.sample_file}\n";
+                    }
+                    else
+                    {
+                        line = $"{column_map[note.channel]},0,{(int)note.ms_start},1,0,0:0:0:0:0:{note.sample_file}\n";
+                    }
+                    w.Write(line);
+                }
+            }
         }
 
         private static string[] genEvents(List<NotePackage.AutoplaySample> samples)
@@ -196,22 +222,23 @@ namespace o2jam_utils
 
                 ms_time.measure_start = timing.measure_start;
                 ms_time.ms_marking = milliseconds;
-                ms_time.ms_per_measure = ms_per_measure;
+                ms_time.ms_per_measure = 240 / timing.val * 1000;
                 osu_timings.Add(ms_time);
             }
             return osu_timings;
         }
 
-        private static string[] genNotes(List<NotePackage.NoteEvent> notes, List<MSTiming> timings)
+        private static List<OsuNote> genNotes(List<NotePackage.NoteEvent> notes, List<MSTiming> timings)
         {
+            List<OsuNote> note_list = new List<OsuNote>();
             foreach(var note in notes)
             {
+                Console.WriteLine($"channel {note.channel} start {note.measure_start} end {note.measure_end}");
                 //grab the last bpm change
                 MSTiming last_bpm = timings[0];
 
                 //incase the end of a LN is after a bpm change
-                MSTiming next_bpm_change = null;
-                bool ln_bpm_change = false;
+                MSTiming next_bpm = null;
 
                 foreach(var timing in timings)
                 {
@@ -229,12 +256,14 @@ namespace o2jam_utils
                     {
                         if (note.measure_end > timing.measure_start)
                         {
-                            next_bpm_change = timing;
-                            ln_bpm_change = true;
+                            next_bpm = timing;
                             break;
                         }
                     }
                 }
+
+                OsuNote osu_note = new OsuNote();
+                osu_note.channel = note.channel;
 
                 //difference between our note and the start of the last bpm
                 float start_delta = note.measure_start - last_bpm.measure_start;
@@ -243,13 +272,22 @@ namespace o2jam_utils
                 float start_offset = last_bpm.ms_per_measure * start_delta;
                 float hit_start = last_bpm.ms_marking + start_offset;
 
+                osu_note.ms_start = hit_start;
+
                 //grab the offset for the end of a long note (if needed)
                 if(note.note_type == 3)
                 {
-
+                    float end_delta = note.measure_end - next_bpm.measure_start;
+                    float end_offset = next_bpm.ms_per_measure * end_delta;
+                    float hit_end = last_bpm.ms_marking + end_offset;
+                    osu_note.LN = true;
+                    osu_note.ms_end = hit_end;
                 }
+
+
+                note_list.Add(osu_note);
             }
-            return null;
+            return note_list;
         }
     }
 }
