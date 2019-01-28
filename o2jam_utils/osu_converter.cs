@@ -20,18 +20,18 @@ namespace o2jam_utils
         //timings for bpm changes plus their ms markings for osu format
         private class MSTiming
         {
-            public float ms_marking;
-            public float ms_per_measure;
-            public float measure_start;
+            public float ms_marking { get; set;  }
+            public float ms_per_measure { get; set; }
+            public float measure_start { get; set; }
         }
 
         private class OsuNote
         {
-            public bool LN;
-            public int channel;
-            public float ms_start;
+            public bool LN { get; set; }
+            public int channel { get; set; }
+            public float ms_start { get; set; }
             public float ms_end = -1;
-            public string sample_file = null;
+            public string sample_file { get; set; }
         }
 
         public static void OSU_dump(string ojn_path, string out_dir)
@@ -54,13 +54,16 @@ namespace o2jam_utils
             ojn_header.DumpImage(out_folder);
 
 
-            //write EX
-            writeDiff(out_folder, ojn_header, Diff.EX);
+
+
+            //write HX
+            writeDiff(out_folder, ojn_header, Diff.HX);
 
             //write NX
-            writeDiff(out_folder, ojn_header, Diff.NX);
-            //write HX
+            if(ojn_header.level[1] < ojn_header.level[2]) writeDiff(out_folder, ojn_header, Diff.NX);
 
+            //write EX
+            if(ojn_header.level[0] < ojn_header.level[1]) writeDiff(out_folder, ojn_header, Diff.EX);
 
         }
 
@@ -162,7 +165,7 @@ namespace o2jam_utils
                 {
                     float bpm = 240 / timing.ms_per_measure * 1000;
                     float ms_per_beat = 60000 / bpm;
-                    string line = $"{(int)timing.ms_marking},{(int)ms_per_beat},4,2,2,100,1,0\n";
+                    string line = $"{(int)timing.ms_marking},{ms_per_beat},4,2,2,100,1,0\n";
                     w.Write(line);
                 }
 
@@ -183,15 +186,6 @@ namespace o2jam_utils
                     w.Write(line);
                 }
             }
-        }
-
-        private static string[] genEvents(List<NotePackage.AutoplaySample> samples)
-        {
-            foreach (var sample in samples)
-            {
-                Console.WriteLine($"Sample,{sample.measure_start},0,\"OGG{sample.sample_no}.ogg\",70");
-            }
-            return null;
         }
 
         private static List<MSTiming> genTimings(List<NotePackage.BPMChange> timings)
@@ -228,38 +222,39 @@ namespace o2jam_utils
             return osu_timings;
         }
 
+        private class TimingComparer : IComparer<MSTiming>
+        {
+
+            public int Compare(MSTiming x, MSTiming y)
+            {
+                return x.measure_start.CompareTo(y.measure_start);
+            }
+
+        }
+
         private static List<OsuNote> genNotes(List<NotePackage.NoteEvent> notes, List<MSTiming> timings)
         {
             List<OsuNote> note_list = new List<OsuNote>();
             foreach(var note in notes)
             {
-                Console.WriteLine($"channel {note.channel} start {note.measure_start} end {note.measure_end}");
+                //Console.WriteLine($"channel {note.channel} start {note.measure_start} end {note.measure_end}");
                 //grab the last bpm change
                 MSTiming last_bpm = timings[0];
 
                 //incase the end of a LN is after a bpm change
                 MSTiming next_bpm = null;
 
-                foreach(var timing in timings)
-                {
-                    if (timing.measure_start < note.measure_start)
-                    {
-                        last_bpm = timing;
-                        break;
-                    }
-                }
+                int index = timings.BinarySearch(new MSTiming { measure_start = note.measure_start }, new TimingComparer());
+                if (index < 0) index = ~index - 1;
+                last_bpm = timings[index];
 
                 //check for bpm changes throughout a long note
                 if (note.note_type == 3)
                 {
-                    foreach (var timing in timings)
-                    {
-                        if (note.measure_end > timing.measure_start)
-                        {
-                            next_bpm = timing;
-                            break;
-                        }
-                    }
+                    index = timings.BinarySearch(new MSTiming { measure_start = note.measure_end }, new TimingComparer());
+                    if (index < 0) index = ~index - 1;
+                    next_bpm = timings[index];
+
                 }
 
                 OsuNote osu_note = new OsuNote();
