@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using o2jam_utils;
+using O2JamUtils;
 
-namespace o2jam_debug
+namespace O2JamDebug
 {
     class Program
     {
@@ -14,10 +14,10 @@ namespace o2jam_debug
             string[] files = System.IO.Directory.GetFiles(path, "*.ojm");
             for (int i = 0; i < files.Length; i++)
             {
-                String signature = o2jam_utils.OJM_Dump.getType(files[i]);
+                String signature = O2JamUtils.OJMDump.GetType(files[i]);
                 Console.WriteLine(files[i]);
                 Console.WriteLine(signature);
-                o2jam_utils.OJM_Dump.dumpFile(files[i], "D:\\temp\\ojm");
+                O2JamUtils.OJMDump.DumpFile(files[i], "D:\\temp\\ojm");
             }
         }
 
@@ -27,7 +27,7 @@ namespace o2jam_debug
             //test.DumpImage("D:\\temp");
 
             //testing converting to osu
-            OsuConverter.OSU_dump(@"D:\temp\sampleo2jm\o2ma1374.ojn", @"D:\Games\osu!\Songs");
+            OsuConverter.OSUDump(@"D:\temp\sampleo2jm\o2ma1374.ojn", @"D:\Temp\output");
 
             //o2jam_utils.OJM_Dump.dumpFile(@"D:\temp\sampleo2jm\o2ma1183.ojm", @"D:\temp\sampleo2jm");
         }
