@@ -18,7 +18,7 @@ namespace o2jam_utils
             public List<BPMChange> timings = new List<BPMChange>();
 
             //autoplay samles
-            public List<AutoplaySample> samples = new List<AutoplaySample>();
+            public List<NoteEvent> samples = new List<NoteEvent>();
 
             //how many milliseconds since the start of the measure
             public int[] elapsed_time;
@@ -49,7 +49,6 @@ namespace o2jam_utils
         public class NoteEvent
         {
             public int channel;
-            public int bpm;
 
             public short value;
             public byte volume;
@@ -69,13 +68,6 @@ namespace o2jam_utils
             public float measure_start;
         }
 
-        public class AutoplaySample
-        {
-            public int sample_no;
-            public int channel;
-            public float measure_start;
-        }
-
         public static Chart ReadPackage(MemoryMappedFile ojn_file, OJN_Data header, int diff)
         {
             long pos = 0;
@@ -91,7 +83,6 @@ namespace o2jam_utils
             //some variables to keep track of stuff
             //start of long holds
             NoteEvent[] start_holds = new NoteEvent[7];
-            float curr_bpm = 0;
 
             int start, end = -1;
             start = header.note_offset[diff];
@@ -112,16 +103,16 @@ namespace o2jam_utils
                     if (channel == 0)
                     {
                         pos += events * 4;
-                        continue;
                     }
 
                     //get bpm change timing
-                    if (channel == 1)
+                    else if (channel == 1)
                     {
                         for(int j = 0; j < events; j++)
                         {
                             float time = measure;
-                            time += ((j + 1) / ((float)events));
+                            //PLEASE DO NOT ADD ONE TO J, IT BREAKS THE PROCESS
+                            time += (j / ((float)events));
 
                             float val = buf.ReadSingle(pos); pos += 4;
                             if (val == 0) continue;
@@ -130,14 +121,12 @@ namespace o2jam_utils
                             timing.val = val;
                             timing.measure_start = time;
                             chart.timings.Add(timing);
-                            curr_bpm = timing.val;
 
                         }
                     }
                     //populate note events
-                    else if (channel >= 2 && channel <= 8)
+                    else
                     {
-                        //Console.WriteLine((channels)channel + " detected note package, measure" + measure);
                         for(int j = 0; j < events; j++)
                         {
                             short val = buf.ReadInt16(pos); pos += 2;
@@ -149,8 +138,10 @@ namespace o2jam_utils
                             note_event.value = val;
 
                             //the measure time (e.g. 2.5 is measure 2, halfway throught the bar)
+                            //logically with 8 events, the 4th one should be the middle right?
+                            //but adding one to j breaks the program, and I don't know why
                             float time = measure;
-                            time += ((j + 1) / ((float)events));
+                            time += (j / ((float)events));
                             note_event.measure_start = time;
 
                             //get the two half chars
@@ -184,32 +175,19 @@ namespace o2jam_utils
                             else if(note_event.note_type == 0)
                                 note_event.measure_end = -1;
 
-                            note_event.channel = channel - 2;
 
                             //add to chart object
-                            chart.notes.Add(note_event);
+                            if (channel < 9)
+                            {
+                                note_event.channel = channel - 2;
+                                chart.notes.Add(note_event);
+                            }
+                            else
+                            {
+                                note_event.channel = channel;
+                                chart.samples.Add(note_event);
+                            }
                         }
-                    }
-
-                    //still have no idea how the samples work this is just a placeholder
-                    //seems like autoplay samples independent of note hits
-                    //probably if amount of these is less than 20, then we can use audio mode on osu
-                    else if(channel >= 9 && channel <= 22)
-                    {
-                        //Console.WriteLine($"Encountered sound events on measure {measure} channel {channel}");
-                        for(int d = 0; d < events; d++)
-                        {
-                            float time = measure;
-                            time += ((d + 1) / ((float)events));
-
-                            AutoplaySample sample = new AutoplaySample();
-                            sample.sample_no = buf.ReadInt32(pos); pos += 4;
-                            sample.measure_start = time;
-                            sample.channel = channel;
-                            chart.samples.Add(sample);
-                            //Console.WriteLine($"event {d} with val {sample.sample_no}");
-                        }
-                        //pos += events * 4;
                     }
                 }
             }
