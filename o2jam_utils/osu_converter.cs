@@ -34,6 +34,18 @@ namespace o2jam_utils
             public string sample_file { get; set; }
         }
 
+        private class OsuSample
+        {
+            public float ms_start {get; set; }
+            public int channel { get; set; }
+            public string sample_file { get; set; }
+        }
+
+        private class SampleTiming
+        {
+            public float measure_start { get; set; }
+        }
+
         public static void OSU_dump(string ojn_path, string out_dir)
         {
             //read ojn headers
@@ -149,6 +161,7 @@ namespace o2jam_utils
 
             List<MSTiming> ms_timing = genTimings(chart.timings);
             List<OsuNote> note_list = genNotes(chart.notes, ms_timing);
+            List<OsuSample> sample_list = genEvents(chart.samples, ms_timing);
 
             //as per osu specification
             int[] column_map = new int[7]{ 36,109,182,255,328,401,474};
@@ -160,7 +173,12 @@ namespace o2jam_utils
                 foreach (var l in difficulty) w.WriteLine(l);
                 foreach (var l in events) w.WriteLine(l);
 
-                w.WriteLine("[TimingPoints]");
+                foreach(var hit in sample_list)
+                {
+                    w.Write($"5,{(int)hit.ms_start},0,\"{hit.sample_file}\",100\n");
+                }
+
+                w.WriteLine("\n\n[TimingPoints]");
                 foreach (var timing in ms_timing)
                 {
                     float bpm = 240 / timing.ms_per_measure * 1000;
@@ -186,6 +204,29 @@ namespace o2jam_utils
                     w.Write(line);
                 }
             }
+        }
+
+        private static List<OsuSample> genEvents(List<NotePackage.NoteEvent> samples, List<MSTiming> timings)
+        {
+            List<OsuSample> osu_samples = new List<OsuSample>();
+            foreach (var sample in samples)
+            {
+                OsuSample hitsound = new OsuSample();
+                hitsound.channel = sample.channel;
+
+                //get most recent bpm mark
+                int index = timings.BinarySearch(new MSTiming { measure_start = sample.measure_start }, new TimingComparer());
+                if (index < 0) index = ~index - 1;
+                MSTiming last_bpm = timings[index];
+
+                float offset = sample.measure_start - last_bpm.measure_start;
+                offset *= last_bpm.ms_per_measure;
+                hitsound.ms_start = offset + last_bpm.ms_marking;
+
+                hitsound.sample_file = $"M{sample.value + 1}.ogg";
+                osu_samples.Add(hitsound);
+            }
+            return osu_samples;
         }
 
         private static List<MSTiming> genTimings(List<NotePackage.BPMChange> timings)
@@ -279,6 +320,7 @@ namespace o2jam_utils
                     osu_note.ms_end = hit_end;
                 }
 
+                if(note.value > 2)osu_note.sample_file = $"M{note.value + 1}.ogg";
 
                 note_list.Add(osu_note);
             }

@@ -167,11 +167,13 @@ namespace o2jam_utils
                 }
 
                 int value = note_ref + 2;
+                String filename = $"M{value}.ogg";
 
                 //background note
                 if (codec_code == 0)
                 {
                     value = 1000 + note_ref;
+                    filename = $"W{value}.ogg";
                 }
 
                 //unknown sound
@@ -181,7 +183,6 @@ namespace o2jam_utils
                 }
 
                 //write the filename
-                String filename = $"OGG{note_ref}.ogg";
                 String out_file = Path.Combine(out_dir, filename);
                 BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create));
                 writer.Write(sample_data);

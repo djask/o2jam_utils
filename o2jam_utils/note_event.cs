@@ -91,7 +91,9 @@ namespace o2jam_utils
 
             int N = header.package_count[diff];
 
-            using (var buf = ojn_file.CreateViewAccessor(start, end, MemoryMappedFileAccess.Read))
+            int sz = end - start;
+
+            using (var buf = ojn_file.CreateViewAccessor(start, sz, MemoryMappedFileAccess.Read))
             {
                 for(int i = 0; i < N; i++)
                 {
