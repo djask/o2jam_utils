@@ -151,14 +151,14 @@ namespace O2JamUtils
                             note_event.NoteType = buf.ReadByte(pos); pos++;
 
                             //start of a long note, we record the measure time
-                            if (note_event.NoteType == 2 && start_holds[channel-2] == null)
+                            if (channel < 9 && note_event.NoteType == 2 && start_holds[channel-2] == null)
                             {
                                 start_holds[channel - 2] = note_event;
                                 continue;
                             }
 
                             //the end of a long note, we can put this into the note list
-                            else if(note_event.NoteType == 3 && start_holds[channel-2] != null)
+                            else if(channel < 9 && note_event.NoteType == 3 && start_holds[channel-2] != null)
                             {
                                 note_event.MeasureEnd = time;
                                 note_event.MeasureStart = start_holds[channel - 2].MeasureStart;

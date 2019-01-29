@@ -9,16 +9,21 @@ namespace O2JamDebug
 {
     class Program
     {
-        private static void test_dir(string path)
+        private static void test_dir(string path, int jobs)
         {
-            string[] files = System.IO.Directory.GetFiles(path, "*.ojm");
-            for (int i = 0; i < files.Length; i++)
-            {
-                String signature = O2JamUtils.OJMDump.GetType(files[i]);
-                Console.WriteLine(files[i]);
-                Console.WriteLine(signature);
-                O2JamUtils.OJMDump.DumpFile(files[i], "D:\\temp\\ojm");
-            }
+            string[] files = System.IO.Directory.GetFiles(path, "*.ojn");
+            Parallel.For(0, files.Length, i =>
+             {
+                 Console.WriteLine(files[i]);
+                 try
+                 {
+                     OsuConverter.OSUDump(files[i], @"D:\Temp\output");
+                 }
+                 catch
+                 {
+                     return;
+                 }
+             });
         }
 
         static void Main(string[] args)
@@ -27,9 +32,11 @@ namespace O2JamDebug
             //test.DumpImage("D:\\temp");
 
             //testing converting to osu
-            OsuConverter.OSUDump(@"D:\temp\sampleo2jm\o2ma1374.ojn", @"D:\Temp\output");
+            //OsuConverter.OSUDump(@"D:\temp\sampleo2jm\o2ma1374.ojn", @"D:\Temp\output");
 
             //o2jam_utils.OJM_Dump.dumpFile(@"D:\temp\sampleo2jm\o2ma1183.ojm", @"D:\temp\sampleo2jm");
+
+            test_dir(@"d:\Games\o2servers\dpv3\Music",12);
         }
     }
 }

@@ -114,58 +114,61 @@ namespace O2JamUtils
             int payload_size = reader.ReadInt32();
             int padding = reader.ReadInt32();
 
-            buf = f.CreateViewStream(28, 0, MemoryMappedFileAccess.Read);
-            reader = new BinaryReader(buf);
-
-            for (int i = 0; i < sample_count; i++)
+            using (buf = f.CreateViewStream(28, 0, MemoryMappedFileAccess.Read))
+            using (reader = new BinaryReader(buf))
             {
-                long remaining_bytes = buf.Capacity - buf.Position;
-                if(remaining_bytes < 52)
+
+                for (int i = 0; i < sample_count; i++)
                 {
-                    throw new System.ArgumentException("OJM Header sample size is incorrect");
+                    long remaining_bytes = buf.Capacity - buf.Position;
+                    if (remaining_bytes < 52)
+                    {
+                        throw new System.ArgumentException("OJM Header sample size is incorrect");
+                    }
+
+                    byte[] sample_name = reader.ReadBytes(32);
+                    int sample_size = reader.ReadInt32();
+
+                    short codec_code = reader.ReadInt16();
+                    short codec_code2 = reader.ReadInt16();
+
+                    int music_flag = reader.ReadInt32();
+                    short note_ref = reader.ReadInt16();
+                    short unk_zero = reader.ReadInt16();
+                    int pcm_samples = reader.ReadInt32();
+
+                    byte[] sample_data = reader.ReadBytes(sample_size);
+
+                    switch (encryption_flag)
+                    {
+                        case 0: break; //Let it pass
+                        case 16: M30_xor(sample_data, mask_nami); break;
+                        case 32: M30_xor(sample_data, mask_0412); break;
+                        default: break;
+                    }
+
+                    //normal note
+                    int value = note_ref + 2;
+                    String filename = $"M{value}.ogg";
+
+                    //background note
+                    if (codec_code == 0)
+                    {
+                        value = 1000 + note_ref;
+                        filename = $"W{value}.ogg";
+                    }
+
+                    //unknown sound
+                    else if (codec_code != 5)
+                    {
+                        Console.WriteLine("not recognized sample type");
+                    }
+
+                    //write the filename
+                    String out_file = Path.Combine(out_dir, filename);
+                    using (BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create)))
+                        writer.Write(sample_data);
                 }
-
-                byte[] sample_name = reader.ReadBytes(32);
-                int sample_size = reader.ReadInt32();
-
-                short codec_code = reader.ReadInt16();
-                short codec_code2 = reader.ReadInt16();
-
-                int music_flag = reader.ReadInt32();
-                short note_ref = reader.ReadInt16();
-                short unk_zero = reader.ReadInt16();
-                int pcm_samples = reader.ReadInt32();
-
-                byte[] sample_data = reader.ReadBytes(sample_size);
-
-                switch (encryption_flag)
-                {
-                    case 0: break; //Let it pass
-                    case 16: M30_xor(sample_data, mask_nami); break;
-                    case 32: M30_xor(sample_data, mask_0412); break;
-                    default: break;
-                }
-
-                int value = note_ref + 2;
-                String filename = $"M{value}.ogg";
-
-                //background note
-                if (codec_code == 0)
-                {
-                    value = 1000 + note_ref;
-                    filename = $"W{value}.ogg";
-                }
-
-                //unknown sound
-                else if (codec_code != 5)
-                {
-                    Console.WriteLine("not recognized sample type");
-                }
-
-                //write the filename
-                String out_file = Path.Combine(out_dir, filename);
-                BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create));
-                writer.Write(sample_data);
             }
         }
 
@@ -198,7 +201,7 @@ namespace O2JamUtils
             acc_keybyte = 0xFF;
             acc_counter = 0;
             
-            //read wav data first
+            //read wav data first this doesn't really work yet
             while(file_offset < ogg_start)
             {
                 buf = f.CreateViewStream(file_offset, 56, MemoryMappedFileAccess.Read);
@@ -242,26 +245,25 @@ namespace O2JamUtils
 
                 //write the filename can't be bothered finding out the encoding
                 sample_name = sample_name.Where(i => i != 0).ToArray();
-                string filename = $"WAV{sample_id}.wav";
+                string filename = $"M{sample_id}.wav";
                 String out_file = Path.Combine(out_dir, filename);
-                BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create));
-
-                writer.Write("RIFF");
-                writer.Write(chunk_size + 36);
-                writer.Write("WAVE");
-                writer.Write("fmt");
-                writer.Write(0x10);
-                writer.Write(audio_format);
-                writer.Write(num_channels);
-                writer.Write(sample_rate);
-                writer.Write(bit_rate);
-                writer.Write(block_align);
-                writer.Write(bits_per_sample);
-                writer.Write("data");
-                writer.Write(chunk_size);
-                writer.Write(wav_data);
-
-                writer.Close();
+                using (BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create)))
+                {
+                    writer.Write("RIFF");
+                    writer.Write(chunk_size + 36);
+                    writer.Write("WAVE");
+                    writer.Write("fmt");
+                    writer.Write(0x10);
+                    writer.Write(audio_format);
+                    writer.Write(num_channels);
+                    writer.Write(sample_rate);
+                    writer.Write(bit_rate);
+                    writer.Write(block_align);
+                    writer.Write(bits_per_sample);
+                    writer.Write("data");
+                    writer.Write(chunk_size);
+                    writer.Write(wav_data);
+                }
 
             }
 
@@ -282,24 +284,28 @@ namespace O2JamUtils
                     continue;
                 }
 
-                buf = f.CreateViewStream(file_offset, sample_size, MemoryMappedFileAccess.Read);
-                reader = new BinaryReader(buf);
-                file_offset += sample_size;
-
-                //write the filename
-                sample_name = sample_name.Where(i => i != 0).ToArray();
-                string decname = Encoding.GetEncoding(936).GetString(sample_name);
-                string filename = $"OGG{sample_id}.ogg";
-                String out_file = Path.Combine(out_dir, filename);
-                BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create));
-
-                while (reader.BaseStream.Position != reader.BaseStream.Length)
+                using (buf = f.CreateViewStream(file_offset, sample_size, MemoryMappedFileAccess.Read))
                 {
-                    tmp_buffer = reader.ReadBytes(1024);
-                    writer.Write(tmp_buffer);
+                    reader = new BinaryReader(buf);
+                    file_offset += sample_size;
+
+                    //write the filename
+                    sample_name = sample_name.Where(i => i != 0).ToArray();
+                    string decname = Encoding.GetEncoding(936).GetString(sample_name);
+                    string filename = $"M{sample_id - 1000}.ogg";
+                    String out_file = Path.Combine(out_dir, filename);
+                    using (BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create)))
+                    {
+
+                        while (reader.BaseStream.Position != reader.BaseStream.Length)
+                        {
+                            tmp_buffer = reader.ReadBytes(1024);
+                            writer.Write(tmp_buffer);
+                        }
+                        writer.Close();
+                        sample_id++;
+                    }
                 }
-                writer.Close();
-                sample_id++;
 
             }
         }

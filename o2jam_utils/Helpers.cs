@@ -29,5 +29,10 @@ namespace O2JamUtils
                       false);
 
         }
+
+        public static string GetSafeFilename(string filename)
+        {
+            return string.Join("_", filename.Split(Path.GetInvalidFileNameChars()));
+        }
     }
 }
