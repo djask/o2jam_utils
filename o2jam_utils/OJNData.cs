@@ -129,14 +129,18 @@ namespace O2JamUtils
         public void DumpImage(String out_dir)
         {
             if (cover_size == 0) return;
-            MemoryMappedViewAccessor buf = ojn_file.CreateViewAccessor(CoverOffset, cover_size, MemoryMappedFileAccess.Read);
-            //jpeg image dump
-            String filename = "bg.jpg";
-            String path = Path.Combine(out_dir, filename);
-            BinaryWriter writer = new BinaryWriter(File.Open(path, FileMode.Create));
-            byte[] tmp = new byte[cover_size];
-            buf.ReadArray(0, tmp, 0, cover_size);
-            writer.Write(tmp);
+            using (MemoryMappedViewAccessor buf = ojn_file.CreateViewAccessor(CoverOffset, cover_size, MemoryMappedFileAccess.Read))
+            {
+                //jpeg image dump
+                String filename = "bg.jpg";
+                String path = Path.Combine(out_dir, filename);
+                using (BinaryWriter writer = new BinaryWriter(File.Open(path, FileMode.Create)))
+                {
+                    byte[] tmp = new byte[cover_size];
+                    buf.ReadArray(0, tmp, 0, cover_size);
+                    writer.Write(tmp);
+                }
+            }
         }
 
         public NotePackage.Chart DumpEXPackage()

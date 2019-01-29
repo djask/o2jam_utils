@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.IO;
-using System.IO.MemoryMappedFiles;
+using System.IO.Compression;
 
 namespace O2JamUtils
 {
@@ -15,6 +15,12 @@ namespace O2JamUtils
             EX,
             NX,
             HX
+        };
+
+        private enum Sig
+        {
+            M30,
+            OJM
         };
 
         //timings for bpm changes plus their ms markings for osu format
@@ -52,21 +58,20 @@ namespace O2JamUtils
             OJNData ojnHeader = new OJNData(ojn_path);
 
             //output folder for beatmap
-            string outFolder = Path.Combine(out_dir, ojnHeader.SongID.ToString());
+            string folderName = $"{ojnHeader.SongID} {ojnHeader.Artist} - {ojnHeader.Title}";
+            folderName = Helpers.GetSafeFilename(folderName);
+            string outFolder = Path.Combine(out_dir, folderName);
             DirectoryInfo directory = Directory.CreateDirectory(outFolder);
 
             //get the ojm path, we assume it is in the same directory
             DirectoryInfo o2jFolder = Directory.GetParent(ojn_path);
-            string ojmPath = Path.Combine(o2jFolder.FullName, ojnHeader.OJMFile);
+            string ojmPath = Path.Combine(o2jFolder.FullName, $"{Path.GetFileNameWithoutExtension(ojn_path)}.ojm");
 
             //dump the media contents
             OJMDump.DumpFile(ojmPath, outFolder);
 
             //dump image
             ojnHeader.DumpImage(outFolder);
-
-
-
 
             //write HX
             WriteDiff(outFolder, ojnHeader, Diff.HX);
@@ -77,11 +82,9 @@ namespace O2JamUtils
             //write EX
             if(ojnHeader.level[0] < ojnHeader.level[1]) WriteDiff(outFolder, ojnHeader, Diff.EX);
 
-        }
+            ZipOSZ(outFolder);
+            Directory.Delete(outFolder, true);
 
-        private static string GetSafeFilename(string filename)
-        {
-            return string.Join("_", filename.Split(Path.GetInvalidFileNameChars()));
         }
 
         private static void WriteDiff(string path, OJNData ojn_header, Diff diff)
@@ -107,7 +110,7 @@ namespace O2JamUtils
                     break;
             }
             diffname = $"{ojn_header.Title}{diffex}.osu";
-            diffname = GetSafeFilename(diffname);
+            diffname = Helpers.GetSafeFilename(diffname);
             diffname = Path.Combine(path, diffname);
 
             string[] general =
@@ -193,17 +196,29 @@ namespace O2JamUtils
                 foreach (var note in note_list)
                 {
                     string line;
+                    int vol = 100;
+                    if (note.SampleFile == null) vol = 0;
                     if (note.LN)
                     {
-                        line = $"{column_map[note.Channel]},0,{(int)note.MsStart},128,0,{(int)note.MsEnd}:0:0:0:0:{note.SampleFile}\n";
+                        line = $"{column_map[note.Channel]},0,{(int)note.MsStart},128,0,{(int)note.MsEnd}:0:0:0:{vol}:{note.SampleFile}\n";
                     }
                     else
                     {
-                        line = $"{column_map[note.Channel]},0,{(int)note.MsStart},1,0,0:0:0:0:0:{note.SampleFile}\n";
+                        line = $"{column_map[note.Channel]},0,{(int)note.MsStart},1,0,0:0:0:{vol}:{note.SampleFile}\n";
                     }
                     w.Write(line);
                 }
             }
+        }
+
+        private static void ZipOSZ(String path)
+        {
+            //get the ojm path, we assume it is in the same directory
+            string beatmapName = Path.GetFileName(path) + ".osz";
+            DirectoryInfo beatmapParentFolder = Directory.GetParent(path);
+            string outputName = Path.Combine(beatmapParentFolder.FullName, beatmapName);
+            if (File.Exists(outputName)) File.Delete(outputName);
+            ZipFile.CreateFromDirectory(path, outputName);
         }
 
         private static List<OsuSample> GenEvents(List<NotePackage.NoteEvent> samples, List<MSTiming> timings)
@@ -225,7 +240,8 @@ namespace O2JamUtils
                 offset *= last_bpm.MsPerMeasure;
                 hitsound.MsStart = offset + last_bpm.MsMarking;
 
-                hitsound.SampleFile = $"M{sample.Value + 1}.ogg";
+                if(sample.Value > 1000) hitsound.SampleFile = $"M{sample.Value - 999}.ogg";
+                else hitsound.SampleFile = $"M{sample.Value + 1}.ogg";
                 osu_samples.Add(hitsound);
             }
             return osu_samples;
@@ -323,8 +339,8 @@ namespace O2JamUtils
                     osu_note.LN = true;
                     osu_note.MsEnd = hit_end;
                 }
-
-                if(note.Value > 2)osu_note.SampleFile = $"M{note.Value + 1}.ogg";
+                if (note.Value > 1000) osu_note.SampleFile = $"M{note.Value - 999}.ogg";
+                else if(note.Value > 2)osu_note.SampleFile = $"M{note.Value + 1}.ogg";
 
                 note_list.Add(osu_note);
             }
