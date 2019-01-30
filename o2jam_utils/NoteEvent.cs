@@ -182,7 +182,7 @@ namespace O2JamUtils
                             else
                             {
                                 note_event.Channel = channel;
-                                if(note_event.Value % 1000 > 1) chart.Samples.Add(note_event);
+                                if(note_event.Value > 1) chart.Samples.Add(note_event);
                             }
                         }
                     }
