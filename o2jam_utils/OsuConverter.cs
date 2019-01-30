@@ -120,7 +120,7 @@ namespace O2JamUtils
                     break;
                 case Diff.HX:
                     chart = ojn_header.DumpHXPackage();
-                    diffex = $"HX_LVL{ojn_header.level[2]}";
+                    diffex = $"_HX_LVL{ojn_header.level[2]}";
                     break;
             }
             diffname = $"{ojn_header.Title}{diffex}.osu";
