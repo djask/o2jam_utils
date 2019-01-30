@@ -45,7 +45,7 @@
     <Compile Include="NoteEvent.cs" />
     <Compile Include="OJMDumper.cs" />
     <Compile Include="OJNData.cs" />
-    <Compile Include="OsuConverter.cs" />
+    <Compile Include="OsuBeatmap.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

@@ -27,7 +27,8 @@ namespace O2JamDebug
                 try
                 {
                     Console.Write($"Processing file {files[i]}... ");
-                    String outDir = OsuConverter.BeatmapDump(files[i], output, rendererPath);
+                    OsuBeatmap map = new OsuBeatmap();
+                    String outDir = map.BeatmapDump(files[i], output, rendererPath);
                     if (zipOSZ) Helpers.ZipDir(outDir,".osz");
                 }
                 catch
@@ -97,7 +98,8 @@ namespace O2JamDebug
                 else
                 {
                     Console.Write($"Processing file {input}... ");
-                    String outDir = OsuConverter.BeatmapDump(input, output, rendererPath);
+                    OsuBeatmap map = new OsuBeatmap();
+                    String outDir = map.BeatmapDump(input, output, rendererPath);
                     if (zipOSZ) Helpers.ZipDir(outDir, ".osz");
                 }
             }

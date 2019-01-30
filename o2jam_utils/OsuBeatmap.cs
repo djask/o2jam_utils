@@ -8,7 +8,7 @@ using System.Diagnostics;
 
 namespace O2JamUtils
 {
-    public class OsuConverter
+    public class OsuBeatmap
     {
         private enum Diff
         {
@@ -26,7 +26,7 @@ namespace O2JamUtils
         //timings for bpm changes plus their ms markings for osu format
         private class MSTiming
         {
-            public float MsMarking { get; set;  }
+            public float MsMarking { get; set; }
             public float MsPerMeasure { get; set; }
             public float MeasureStart { get; set; }
         }
@@ -42,7 +42,7 @@ namespace O2JamUtils
 
         private class OsuSample
         {
-            public float MsStart {get; set; }
+            public float MsStart { get; set; }
             public int Channel { get; set; }
             public string SampleFile { get; set; }
         }
@@ -52,12 +52,25 @@ namespace O2JamUtils
             public float MeasureStart { get; set; }
         }
 
-        private static Boolean render_audio;
+        private class TimingComparer : IComparer<MSTiming>
+        {
+            public int Compare(MSTiming x, MSTiming y)
+            {
+                return x.MeasureStart.CompareTo(y.MeasureStart);
+            }
+        }
+
+        private Boolean ext_renderer;
+        private Boolean keysound_flag = false;
+
+        private List<MSTiming> OsuTimings { get; set; } = new List<MSTiming>();
+        private List<OsuNote> OsuNotes { get; set;  } = new List<OsuNote>();
+        private List<OsuSample> OsuSamples { get; set;  } = new List<OsuSample>();
 
         //dumps file contents and returns the new directory with the contents
-        public static string BeatmapDump(string ojn_path, string out_dir, String renderer_path)
+        public string BeatmapDump(string ojn_path, string out_dir, String renderer_path)
         {
-            render_audio = renderer_path != null ? true : false;
+            ext_renderer = renderer_path != null ? true : false;
 
             //read ojn headers
             OJNData ojnHeader = new OJNData(ojn_path);
@@ -72,12 +85,27 @@ namespace O2JamUtils
             DirectoryInfo o2jFolder = Directory.GetParent(ojn_path);
             string ojmPath = Path.Combine(o2jFolder.FullName, $"{Path.GetFileNameWithoutExtension(ojn_path)}.ojm");
 
+            //dump image
+            ojnHeader.DumpImage(outFolder);
+
+            //write HX
+            CreateDiff(outFolder, ojnHeader, Diff.HX);
+
+            //write NX
+            if(ojnHeader.level[1] < ojnHeader.level[2])
+                CreateDiff(outFolder, ojnHeader, Diff.NX);
+
+            //write EX
+            if(ojnHeader.level[0] < ojnHeader.level[1] || ojnHeader.level[0] < ojnHeader.level[2])
+                CreateDiff(outFolder, ojnHeader, Diff.EX);
+
             //dump the media contents
-            if (!render_audio) OJMDump.DumpFile(ojmPath, outFolder);
+            if (!ext_renderer) OJMDump.DumpFile(ojmPath, outFolder);
             else
             {
+                string render = keysound_flag ? "realtime" : "quick";
                 var p = new Process();
-                p.StartInfo = new ProcessStartInfo(renderer_path, $"{ojn_path} --format mp3 --outfile audio")
+                p.StartInfo = new ProcessStartInfo(renderer_path, $"{ojn_path} --format mp3 --outfile audio --rendermode quick")
                 {
                     UseShellExecute = false
                 };
@@ -86,24 +114,13 @@ namespace O2JamUtils
                 p.WaitForExit();
             }
 
-            //dump image
-            ojnHeader.DumpImage(outFolder);
-
-            //write HX
-            WriteDiff(outFolder, ojnHeader, Diff.HX);
-
-            //write NX
-            if(ojnHeader.level[1] < ojnHeader.level[2]) WriteDiff(outFolder, ojnHeader, Diff.NX);
-
-            //write EX
-            if(ojnHeader.level[0] < ojnHeader.level[1]) WriteDiff(outFolder, ojnHeader, Diff.EX);
-
             return outFolder;
         }
 
-        private static void WriteDiff(string path, OJNData ojn_header, Diff diff)
+        private void CreateDiff(string path, OJNData ojn_header, Diff diff)
         {
             NotePackage.Chart chart;
+
             String diffname = null;
             String diffex = null;
 
@@ -127,7 +144,10 @@ namespace O2JamUtils
             diffname = Helpers.GetSafeFilename(diffname);
             diffname = Path.Combine(path, diffname);
 
-            string audio_file = render_audio ? "audio.mp3" : "virtual";
+            //some chart logic
+            if (chart.Samples.Count() == 1) ext_renderer = true;
+
+            string audio_file = ext_renderer ? "audio.mp3" : "virtual";
 
             string[] general =
             {
@@ -178,9 +198,15 @@ namespace O2JamUtils
                 "\n"
             };
 
-            List<MSTiming> ms_timing = GenTimings(chart.Timings);
-            List<OsuNote> note_list = GenNotes(chart.Notes, ms_timing);
-            List<OsuSample> sample_list = GenEvents(chart.Samples, ms_timing);
+            //clear the globals
+            OsuTimings.Clear();
+            OsuSamples.Clear();
+            OsuNotes.Clear();
+
+            //populate the osu lists
+            GenTimings(chart.Timings);
+            GenNotes(chart.Notes);
+            GenSamples(chart.Samples);
 
             //as per osu specification
             int[] column_map = new int[7]{ 36,109,182,255,328,401,474};
@@ -192,16 +218,20 @@ namespace O2JamUtils
                 foreach (var l in difficulty) w.WriteLine(l);
                 foreach (var l in events) w.WriteLine(l);
 
-                foreach(var hit in sample_list)
+                if (!ext_renderer)
                 {
-                    w.Write($"5,{(int)hit.MsStart},0,\"{hit.SampleFile}\",100\n");
+                    foreach (var hit in OsuSamples)
+                    {
+                        w.Write($"5,{(int)hit.MsStart},0,\"{hit.SampleFile}\",100\n");
+                    }
                 }
 
                 w.WriteLine("\n\n[TimingPoints]");
-                foreach (var timing in ms_timing)
+                foreach (var timing in OsuTimings)
                 {
                     float bpm = 240 / timing.MsPerMeasure * 1000;
                     float ms_per_beat = 60000 / bpm;
+                    if (ms_per_beat < 0.01) ms_per_beat = 0.01f;
                     string line = $"{(int)timing.MsMarking},{ms_per_beat},4,2,2,100,1,0\n";
                     w.Write(line);
                 }
@@ -209,7 +239,7 @@ namespace O2JamUtils
                 w.WriteLine("\n\n[HitObjects]");
 
 
-                foreach (var note in note_list)
+                foreach (var note in OsuNotes)
                 {
                     string line;
                     int vol = 100;
@@ -227,38 +257,8 @@ namespace O2JamUtils
             }
         }
 
-        private static List<OsuSample> GenEvents(List<NotePackage.NoteEvent> samples, List<MSTiming> timings)
+        private void GenTimings(List<NotePackage.BPMChange> timings)
         {
-            List<OsuSample> osu_samples = new List<OsuSample>();
-            foreach (var sample in samples)
-            {
-                OsuSample hitsound = new OsuSample
-                {
-                    Channel = sample.Channel
-                };
-
-                //get most recent bpm mark
-                int index = timings.BinarySearch(new MSTiming { MeasureStart = sample.MeasureStart }, new TimingComparer());
-                if (index < 0) index = ~index - 1;
-                MSTiming last_bpm = timings[index];
-
-                float offset = sample.MeasureStart - last_bpm.MeasureStart;
-                offset *= last_bpm.MsPerMeasure;
-                hitsound.MsStart = offset + last_bpm.MsMarking;
-
-                if (!render_audio)
-                {
-                    if (sample.Value > 1000) hitsound.SampleFile = $"M{sample.Value - 999}.ogg";
-                    else hitsound.SampleFile = $"M{sample.Value + 1}.ogg";
-                }
-                osu_samples.Add(hitsound);
-            }
-            return osu_samples;
-        }
-
-        private static List<MSTiming> GenTimings(List<NotePackage.BPMChange> timings)
-        {
-            List<MSTiming> osu_timings = new List<MSTiming>();
             //elapsed milliseconds
             NotePackage.BPMChange prev = null;
             float milliseconds = 0.0f;
@@ -274,54 +274,73 @@ namespace O2JamUtils
                     ms_time.MeasureStart = timing.MeasureStart;
                     ms_time.MsMarking = 0;
                     ms_time.MsPerMeasure = 240 / timing.NewBPM * 1000;
-                    osu_timings.Add(ms_time);
+                    OsuTimings.Add(ms_time);
                     continue;
                 }
                 float ms_per_measure = 240 / prev.NewBPM * 1000;
                 float delta = timing.MeasureStart - prev.MeasureStart;
+
                 milliseconds += delta * ms_per_measure;
                 prev = timing;
+                float prev_ms = OsuTimings[OsuTimings.Count() - 1].MsMarking;
+                if (milliseconds - prev_ms < 1) OsuTimings[OsuTimings.Count() - 1].MsMarking--;
 
                 ms_time.MeasureStart = timing.MeasureStart;
                 ms_time.MsMarking = milliseconds;
                 ms_time.MsPerMeasure = 240 / timing.NewBPM * 1000;
-                osu_timings.Add(ms_time);
+                OsuTimings.Add(ms_time);
             }
-            return osu_timings;
         }
 
-        private class TimingComparer : IComparer<MSTiming>
+        private void GenSamples(List<NotePackage.NoteEvent> samples)
         {
-
-            public int Compare(MSTiming x, MSTiming y)
+            foreach (var sample in samples)
             {
-                return x.MeasureStart.CompareTo(y.MeasureStart);
-            }
+                OsuSample hitsound = new OsuSample
+                {
+                    Channel = sample.Channel
+                };
 
+                //get most recent bpm mark
+                int index = OsuTimings.BinarySearch(new MSTiming { MeasureStart = sample.MeasureStart }, new TimingComparer());
+                if (index < 0) index = ~index - 1;
+                MSTiming last_bpm = OsuTimings[index];
+
+                float offset = sample.MeasureStart - last_bpm.MeasureStart;
+                offset *= last_bpm.MsPerMeasure;
+                hitsound.MsStart = offset + last_bpm.MsMarking;
+
+                //custom sounds, doesn't really work...
+                if (!ext_renderer)
+                {
+                    if (sample.Value > 1000) hitsound.SampleFile = $"M{sample.Value - 999}.ogg";
+                    else hitsound.SampleFile = $"M{sample.Value + 1}.ogg";
+                }
+                OsuSamples.Add(hitsound);
+            }
         }
 
-        private static List<OsuNote> GenNotes(List<NotePackage.NoteEvent> notes, List<MSTiming> timings)
+        private void GenNotes(List<NotePackage.NoteEvent> notes)
         {
-            List<OsuNote> note_list = new List<OsuNote>();
             foreach(var note in notes)
             {
                 //Console.WriteLine($"channel {note.channel} start {note.measure_start} end {note.measure_end}");
                 //grab the last bpm change
-                MSTiming last_bpm = timings[0];
+                MSTiming last_bpm = OsuTimings[0];
 
                 //incase the end of a LN is after a bpm change
                 MSTiming next_bpm = null;
 
-                int index = timings.BinarySearch(new MSTiming { MeasureStart = note.MeasureStart }, new TimingComparer());
+                int index = OsuTimings.BinarySearch(new MSTiming { MeasureStart = note.MeasureStart }, new TimingComparer());
                 if (index < 0) index = ~index - 1;
-                last_bpm = timings[index];
+                last_bpm = OsuTimings[index];
 
                 //check for bpm changes throughout a long note
                 if (note.NoteType == 3)
                 {
-                    index = timings.BinarySearch(new MSTiming { MeasureStart = note.MeasureEnd }, new TimingComparer());
+                    index = OsuTimings.BinarySearch(new MSTiming { MeasureStart = note.MeasureEnd }, new TimingComparer());
                     if (index < 0) index = ~index - 1;
-                    next_bpm = timings[index];
+                    next_bpm = OsuTimings[index];
 
                 }
 
@@ -348,15 +367,14 @@ namespace O2JamUtils
                     osu_note.LN = true;
                     osu_note.MsEnd = hit_end;
                 }
-                if (!render_audio)
+                if (!ext_renderer)
                 {
                     if (note.Value > 1000) osu_note.SampleFile = $"M{note.Value - 999}.ogg";
                     else if (note.Value > 2) osu_note.SampleFile = $"M{note.Value + 1}.ogg";
                 }
 
-                note_list.Add(osu_note);
+                OsuNotes.Add(osu_note);
             }
-            return note_list;
         }
     }
 }
