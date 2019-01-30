@@ -52,8 +52,12 @@ namespace O2JamUtils
             public float MeasureStart { get; set; }
         }
 
-        public static void OSUDump(string ojn_path, string out_dir)
+        private static Boolean render_audio;
+
+        public static void OSUDump(string ojn_path, string out_dir, Boolean rendered_audio)
         {
+            render_audio = rendered_audio;
+
             //read ojn headers
             OJNData ojnHeader = new OJNData(ojn_path);
 
@@ -68,7 +72,22 @@ namespace O2JamUtils
             string ojmPath = Path.Combine(o2jFolder.FullName, $"{Path.GetFileNameWithoutExtension(ojn_path)}.ojm");
 
             //dump the media contents
-            OJMDump.DumpFile(ojmPath, outFolder);
+            if (!render_audio) OJMDump.DumpFile(ojmPath, outFolder);
+            else
+            {
+                //string full_audio_path = Path.Combine(outFolder, "audio");
+                string uniq_name = Guid.NewGuid().ToString("N");
+                string args = $"{ojn_path} --format mp3 --outfile {uniq_name}";
+                Console.WriteLine($"calling render-ojn.exe with args {args}");
+                var audio_render = System.Diagnostics.Process.Start("render-ojn.exe", args);
+                audio_render.WaitForExit();
+
+                //string rendered_loc = System.Reflection.Assembly.GetEntryAssembly().Location;
+                //rendered_loc = Directory.GetParent(rendered_loc).FullName;
+                //rendered_loc = Path.Combine(rendered_loc, "audio.mp3");
+                //Console.WriteLine(rendered_loc);
+                File.Move($"{uniq_name}.mp3", Path.Combine(outFolder,"audio.mp3"));
+            }
 
             //dump image
             ojnHeader.DumpImage(outFolder);
@@ -83,7 +102,6 @@ namespace O2JamUtils
             if(ojnHeader.level[0] < ojnHeader.level[1]) WriteDiff(outFolder, ojnHeader, Diff.EX);
 
             ZipOSZ(outFolder);
-            Directory.Delete(outFolder, true);
 
         }
 
@@ -113,12 +131,14 @@ namespace O2JamUtils
             diffname = Helpers.GetSafeFilename(diffname);
             diffname = Path.Combine(path, diffname);
 
+            string audio_file = render_audio ? "audio.mp3" : "virtual";
+
             string[] general =
             {
                 "[General]",
-                "AudioFilename: virtual",
+                $"AudioFilename: {audio_file}",
                 "AudioLeadIn: 0",
-                "PreviewTime: 0",
+                "PreviewTime: 6969",
                 "Countdown: 0",
                 "SampleSet: Soft",
                 "StackLeniency: 0.7",
@@ -219,6 +239,8 @@ namespace O2JamUtils
             string outputName = Path.Combine(beatmapParentFolder.FullName, beatmapName);
             if (File.Exists(outputName)) File.Delete(outputName);
             ZipFile.CreateFromDirectory(path, outputName);
+            Directory.Delete(path, true);
+
         }
 
         private static List<OsuSample> GenEvents(List<NotePackage.NoteEvent> samples, List<MSTiming> timings)
@@ -240,8 +262,11 @@ namespace O2JamUtils
                 offset *= last_bpm.MsPerMeasure;
                 hitsound.MsStart = offset + last_bpm.MsMarking;
 
-                if(sample.Value > 1000) hitsound.SampleFile = $"M{sample.Value - 999}.ogg";
-                else hitsound.SampleFile = $"M{sample.Value + 1}.ogg";
+                if (!render_audio)
+                {
+                    if (sample.Value > 1000) hitsound.SampleFile = $"M{sample.Value - 999}.ogg";
+                    else hitsound.SampleFile = $"M{sample.Value + 1}.ogg";
+                }
                 osu_samples.Add(hitsound);
             }
             return osu_samples;
@@ -339,8 +364,11 @@ namespace O2JamUtils
                     osu_note.LN = true;
                     osu_note.MsEnd = hit_end;
                 }
-                if (note.Value > 1000) osu_note.SampleFile = $"M{note.Value - 999}.ogg";
-                else if(note.Value > 2)osu_note.SampleFile = $"M{note.Value + 1}.ogg";
+                if (!render_audio)
+                {
+                    if (note.Value > 1000) osu_note.SampleFile = $"M{note.Value - 999}.ogg";
+                    else if (note.Value > 2) osu_note.SampleFile = $"M{note.Value + 1}.ogg";
+                }
 
                 note_list.Add(osu_note);
             }
