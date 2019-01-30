@@ -103,6 +103,7 @@ namespace O2JamUtils
             if (!ext_renderer) OJMDump.DumpFile(ojmPath, outFolder);
             else
             {
+                //this isn't used yet
                 string render = keysound_flag ? "realtime" : "quick";
                 var p = new Process();
                 p.StartInfo = new ProcessStartInfo(renderer_path, $"{ojn_path} --format mp3 --outfile audio --rendermode quick")
@@ -127,7 +128,7 @@ namespace O2JamUtils
             switch (diff)
             {
                 default:
-                case Diff.EX:
+                //case Diff.EX:
                     chart = ojn_header.DumpEXPackage();
                     diffex = $"_EX_LVL{ojn_header.level[0]}";
                     break;

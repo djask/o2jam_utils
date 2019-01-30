@@ -10,7 +10,7 @@ Currently the program has a CLI interface. You can use it by the following synta
 
 If you want to use the audio renderer, you will need the external render-ojn program for generating audio files. This enables previews in the Osu! beatmap selection. 
 
-```powershell
+```
 O2JamDebug.exe --help
   -i, --input=VALUE          the input directory
   -o, --output=VALUE         output beatmaps folder
@@ -18,3 +18,10 @@ O2JamDebug.exe --help
   -z, --ziposz.              zip the contents at the end
   -h, --help                 show this message and exit
 ```
+
+Example usage:
+
+```
+.\O2JamCLI.exe -i D:\Games\o2servers\new\o2ma2438.ojn -o D:\temp\output\ -z
+```
+
