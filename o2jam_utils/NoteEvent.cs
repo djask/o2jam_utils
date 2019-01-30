@@ -171,17 +171,18 @@ namespace O2JamUtils
                             else if(note_event.NoteType == 0)
                                 note_event.MeasureEnd = -1;
 
-
                             //add to chart object
+                            //for note objects
                             if (channel < 9)
                             {
                                 note_event.Channel = channel - 2;
                                 chart.Notes.Add(note_event);
                             }
+                            //for sample objects
                             else
                             {
                                 note_event.Channel = channel;
-                                chart.Samples.Add(note_event);
+                                if(note_event.Value % 1000 > 1) chart.Samples.Add(note_event);
                             }
                         }
                     }
@@ -189,17 +190,17 @@ namespace O2JamUtils
             }
 
             //sort chart by start time, multiple notes on the same timing sort from smallest to largest channel
-            chart.Notes.Sort(
-                delegate (NoteEvent p1, NoteEvent p2)
-                {
-                    int time = p1.MeasureStart.CompareTo(p2.MeasureStart);
-                    if (time == 0)
-                    {
-                        return p1.Channel.CompareTo(p2.Channel);
-                    }
-                    return time;
-                }
-            );
+            //chart.Notes.Sort(
+            //    delegate (NoteEvent p1, NoteEvent p2)
+            //    {
+            //        int time = p1.MeasureStart.CompareTo(p2.MeasureStart);
+            //        if (time == 0)
+            //        {
+            //            return p1.Channel.CompareTo(p2.Channel);
+            //        }
+            //        return time;
+            //    }
+            //);
             return chart;
         }
     }
