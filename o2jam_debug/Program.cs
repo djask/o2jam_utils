@@ -9,21 +9,21 @@ namespace O2JamDebug
 {
     class Program
     {
-        private static void test_dir(string path, int jobs)
+        private static void test_dir(string path, string output)
         {
             string[] files = System.IO.Directory.GetFiles(path, "*.ojn");
-            Parallel.For(0, files.Length, i =>
-             {
-                 Console.WriteLine(files[i]);
-                 try
-                 {
-                     OsuConverter.OSUDump(files[i], @"D:\Temp\output");
-                 }
-                 catch
-                 {
-                     return;
-                 }
-             });
+            for (int i = 0; i < files.Length; i++)
+            {
+                Console.WriteLine(files[i]);
+                try
+                {
+                    OsuConverter.OSUDump(files[i], output, true);
+                }
+                catch
+                {
+                    return;
+                }
+            }
         }
 
         static void Main(string[] args)
@@ -35,8 +35,21 @@ namespace O2JamDebug
             //OsuConverter.OSUDump(@"D:\temp\sampleo2jm\o2ma1374.ojn", @"D:\Temp\output");
 
             //o2jam_utils.OJM_Dump.dumpFile(@"D:\temp\sampleo2jm\o2ma1183.ojm", @"D:\temp\sampleo2jm");
-
-            test_dir(@"d:\Games\o2servers\dpv3\Music",12);
+            if(args.Length != 2)
+            {
+                Console.WriteLine("Usage: program.exe [ojnfolder] [outputfolder]");
+                return;
+            }
+            try
+            {
+                System.IO.Directory.CreateDirectory(args[1]);
+            }
+            catch
+            {
+                Console.WriteLine("Error creating or finding output directory, please check your arguments");
+                return;
+            }
+            test_dir(args[0], args[1]);
         }
     }
 }
