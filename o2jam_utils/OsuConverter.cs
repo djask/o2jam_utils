@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.IO;
-using System.IO.Compression;
+using System.Diagnostics;
 
 namespace O2JamUtils
 {
@@ -54,9 +54,10 @@ namespace O2JamUtils
 
         private static Boolean render_audio;
 
-        public static void OSUDump(string ojn_path, string out_dir, Boolean rendered_audio)
+        //dumps file contents and returns the new directory with the contents
+        public static string BeatmapDump(string ojn_path, string out_dir, String renderer_path)
         {
-            render_audio = rendered_audio;
+            render_audio = renderer_path != null ? true : false;
 
             //read ojn headers
             OJNData ojnHeader = new OJNData(ojn_path);
@@ -75,18 +76,14 @@ namespace O2JamUtils
             if (!render_audio) OJMDump.DumpFile(ojmPath, outFolder);
             else
             {
-                //string full_audio_path = Path.Combine(outFolder, "audio");
-                string uniq_name = Guid.NewGuid().ToString("N");
-                string args = $"{ojn_path} --format mp3 --outfile {uniq_name}";
-                Console.WriteLine($"calling render-ojn.exe with args {args}");
-                var audio_render = System.Diagnostics.Process.Start("render-ojn.exe", args);
-                audio_render.WaitForExit();
-
-                //string rendered_loc = System.Reflection.Assembly.GetEntryAssembly().Location;
-                //rendered_loc = Directory.GetParent(rendered_loc).FullName;
-                //rendered_loc = Path.Combine(rendered_loc, "audio.mp3");
-                //Console.WriteLine(rendered_loc);
-                File.Move($"{uniq_name}.mp3", Path.Combine(outFolder,"audio.mp3"));
+                var p = new Process();
+                p.StartInfo = new ProcessStartInfo(renderer_path, $"{ojn_path} --format mp3 --outfile audio")
+                {
+                    UseShellExecute = false
+                };
+                p.StartInfo.WorkingDirectory = outFolder;
+                p.Start();
+                p.WaitForExit();
             }
 
             //dump image
@@ -101,8 +98,7 @@ namespace O2JamUtils
             //write EX
             if(ojnHeader.level[0] < ojnHeader.level[1]) WriteDiff(outFolder, ojnHeader, Diff.EX);
 
-            ZipOSZ(outFolder);
-
+            return outFolder;
         }
 
         private static void WriteDiff(string path, OJNData ojn_header, Diff diff)
@@ -229,18 +225,6 @@ namespace O2JamUtils
                     w.Write(line);
                 }
             }
-        }
-
-        private static void ZipOSZ(String path)
-        {
-            //get the ojm path, we assume it is in the same directory
-            string beatmapName = Path.GetFileName(path) + ".osz";
-            DirectoryInfo beatmapParentFolder = Directory.GetParent(path);
-            string outputName = Path.Combine(beatmapParentFolder.FullName, beatmapName);
-            if (File.Exists(outputName)) File.Delete(outputName);
-            ZipFile.CreateFromDirectory(path, outputName);
-            Directory.Delete(path, true);
-
         }
 
         private static List<OsuSample> GenEvents(List<NotePackage.NoteEvent> samples, List<MSTiming> timings)
