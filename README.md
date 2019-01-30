@@ -8,8 +8,13 @@ This currently has working osz conversion for OGG only o2jam files (which is mos
 
 Currently the program has a CLI interface. You can use it by the following syntax. 
 
-If you want to use the audio renderer, you will need the external render-ojn program for generating audio files. This enables previews in the Osu! beatmap selection. Place it in the same directory as this project's binary.
+If you want to use the audio renderer, you will need the external render-ojn program for generating audio files. This enables previews in the Osu! beatmap selection. 
 
-```
-O2JamDebug.exe [ojn/ojm folder path] [output path]
+```powershell
+O2JamDebug.exe --help
+  -i, --input=VALUE          the input directory
+  -o, --output=VALUE         output beatmaps folder
+  -r, --renderpath=VALUE     path for external audio renderer
+  -z, --ziposz.              zip the contents at the end
+  -h, --help                 show this message and exit
 ```
