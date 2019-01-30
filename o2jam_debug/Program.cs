@@ -103,8 +103,8 @@ namespace O2JamDebug
                     if (zipOSZ) Helpers.ZipDir(outDir, ".osz");
                 }
             }
-            Console.WriteLine("Program complete, press any key to continue...");
-            Console.ReadKey();
+            //Console.WriteLine("Program complete, press any key to continue...");
+            //Console.ReadKey();
         }
     }
 }
