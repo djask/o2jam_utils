@@ -35,6 +35,9 @@
     <Reference Include="NDesk.Options, Version=0.2.1.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\NDesk.Options.0.2.1\lib\NDesk.Options.dll</HintPath>
     </Reference>
+    <Reference Include="SupersonicSound, Version=4.1.1.0, Culture=neutral, processorArchitecture=x86">
+      <HintPath>..\packages\SupersonicSound.4.1.1.0\lib\net46\SupersonicSound.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />

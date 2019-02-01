@@ -16,9 +16,6 @@ namespace O2JamUtils
 
             //timings list
             public List<BPMChange> Timings { get; set; } = new List<BPMChange>();
-
-            //autoplay samles
-            public List<NoteEvent> Samples { get; set; } = new List<NoteEvent>();
         }
 
         public class NoteHeader
@@ -172,18 +169,9 @@ namespace O2JamUtils
                                 note_event.MeasureEnd = -1;
 
                             //add to chart object
-                            //for note objects
-                            if (channel < 9)
-                            {
-                                note_event.Channel = channel - 2;
-                                chart.Notes.Add(note_event);
-                            }
-                            //for sample objects
-                            else
-                            {
-                                note_event.Channel = channel;
-                                chart.Samples.Add(note_event);
-                            }
+                            note_event.Channel = channel;
+                            chart.Notes.Add(note_event);
+                            
                         }
                     }
                 }
