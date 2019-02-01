@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.IO;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace O2JamUtils
 {
@@ -40,13 +41,6 @@ namespace O2JamUtils
             public string SampleFile { get; set; }
         }
 
-        private class OsuSample
-        {
-            public float MsStart { get; set; }
-            public int Channel { get; set; }
-            public string SampleFile { get; set; }
-        }
-
         private class SampleTiming
         {
             public float MeasureStart { get; set; }
@@ -65,7 +59,7 @@ namespace O2JamUtils
 
         private List<MSTiming> OsuTimings { get; set; } = new List<MSTiming>();
         private List<OsuNote> OsuNotes { get; set;  } = new List<OsuNote>();
-        private List<OsuSample> OsuSamples { get; set;  } = new List<OsuSample>();
+        private List<OsuNote> OsuSamples { get; set;  } = new List<OsuNote>();
 
         //dumps file contents and returns the new directory with the contents
         public string BeatmapDump(string ojn_path, string out_dir, String renderer_path)
@@ -128,7 +122,7 @@ namespace O2JamUtils
             switch (diff)
             {
                 default:
-                //case Diff.EX:
+                case Diff.EX:
                     chart = ojn_header.DumpEXPackage();
                     diffex = $"_EX_LVL{ojn_header.level[0]}";
                     break;
@@ -144,9 +138,6 @@ namespace O2JamUtils
             diffname = $"{ojn_header.Title}{diffex}.osu";
             diffname = Helpers.GetSafeFilename(diffname);
             diffname = Path.Combine(path, diffname);
-
-            //some chart logic
-            if (chart.Samples.Count() == 1) ext_renderer = true;
 
             string audio_file = ext_renderer ? "audio.mp3" : "virtual";
 
@@ -207,7 +198,6 @@ namespace O2JamUtils
             //populate the osu lists
             GenTimings(chart.Timings);
             GenNotes(chart.Notes);
-            GenSamples(chart.Samples);
 
             //as per osu specification
             int[] column_map = new int[7]{ 36,109,182,255,328,401,474};
@@ -293,34 +283,6 @@ namespace O2JamUtils
             }
         }
 
-        private void GenSamples(List<NotePackage.NoteEvent> samples)
-        {
-            foreach (var sample in samples)
-            {
-                OsuSample hitsound = new OsuSample
-                {
-                    Channel = sample.Channel
-                };
-
-                //get most recent bpm mark
-                int index = OsuTimings.BinarySearch(new MSTiming { MeasureStart = sample.MeasureStart }, new TimingComparer());
-                if (index < 0) index = ~index - 1;
-                MSTiming last_bpm = OsuTimings[index];
-
-                float offset = sample.MeasureStart - last_bpm.MeasureStart;
-                offset *= last_bpm.MsPerMeasure;
-                hitsound.MsStart = offset + last_bpm.MsMarking;
-
-                //custom sounds, doesn't really work...
-                if (!ext_renderer)
-                {
-                    if (sample.Value > 1000) hitsound.SampleFile = $"M{sample.Value - 999}.ogg";
-                    else hitsound.SampleFile = $"M{sample.Value + 1}.ogg";
-                }
-                OsuSamples.Add(hitsound);
-            }
-        }
-
         private void GenNotes(List<NotePackage.NoteEvent> notes)
         {
             foreach(var note in notes)
@@ -342,7 +304,6 @@ namespace O2JamUtils
                     index = OsuTimings.BinarySearch(new MSTiming { MeasureStart = note.MeasureEnd }, new TimingComparer());
                     if (index < 0) index = ~index - 1;
                     next_bpm = OsuTimings[index];
-
                 }
 
                 OsuNote osu_note = new OsuNote
@@ -374,7 +335,12 @@ namespace O2JamUtils
                     else if (note.Value > 2) osu_note.SampleFile = $"M{note.Value + 1}.ogg";
                 }
 
-                OsuNotes.Add(osu_note);
+                if (osu_note.Channel < 9)
+                {
+                    osu_note.Channel -= 2;
+                    OsuNotes.Add(osu_note);
+                }
+                else OsuSamples.Add(osu_note);
             }
         }
     }
