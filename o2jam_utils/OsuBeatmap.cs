@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.IO;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace O2JamUtils
 {
@@ -38,7 +39,7 @@ namespace O2JamUtils
             public int Channel { get; set; }
             public float MsStart { get; set; }
             public float MsEnd = -1;
-            public string SampleFile { get; set; }
+            public int RefID { get; set; }
         }
 
         private class SampleTiming
@@ -93,8 +94,10 @@ namespace O2JamUtils
             if(ojnHeader.level[0] < ojnHeader.level[1] || ojnHeader.level[0] < ojnHeader.level[2])
                 CreateDiff(outFolder, ojnHeader, Diff.EX);
 
-            RenderSystem fmod_sys = new RenderSystem(true);
+            FMODSystem fmod_sys = new FMODSystem(true);
             fmod_sys.LoadSamples(ojmPath, true);
+
+            PlaySong(fmod_sys);
 
             return outFolder;
         }
@@ -196,14 +199,6 @@ namespace O2JamUtils
                 foreach (var l in difficulty) w.WriteLine(l);
                 foreach (var l in events) w.WriteLine(l);
 
-                if (!ext_renderer)
-                {
-                    foreach (var hit in OsuSamples)
-                    {
-                        w.Write($"5,{(int)hit.MsStart},0,\"{hit.SampleFile}\",100\n");
-                    }
-                }
-
                 w.WriteLine("\n\n[TimingPoints]");
                 foreach (var timing in OsuTimings)
                 {
@@ -220,18 +215,49 @@ namespace O2JamUtils
                 foreach (var note in OsuNotes)
                 {
                     string line;
-                    int vol = 100;
-                    if (note.SampleFile == null) vol = 0;
+                    int vol = 0;
                     if (note.LN)
                     {
-                        line = $"{column_map[note.Channel]},0,{(int)note.MsStart},128,0,{(int)note.MsEnd}:0:0:0:{vol}:{note.SampleFile}\n";
+                        line = $"{column_map[note.Channel]},0,{(int)note.MsStart},128,0,{(int)note.MsEnd}:0:0:0:{vol}:\n";
                     }
                     else
                     {
-                        line = $"{column_map[note.Channel]},0,{(int)note.MsStart},1,0,0:0:0:{vol}:{note.SampleFile}\n";
+                        line = $"{column_map[note.Channel]},0,{(int)note.MsStart},1,0,0:0:0:{vol}:\n";
                     }
                     w.Write(line);
                 }
+            }
+        }
+
+        private void PlaySong(FMODSystem fmod_sys)
+        {
+            List<OsuNote> sample_times = new List<OsuNote>();
+            foreach (var sample in OsuSamples)
+            {
+                if (fmod_sys.Samples.Any(n => n.RefID == sample.RefID))
+                {
+                    sample_times.Add(sample);
+                }
+            }
+            foreach (var note in OsuNotes)
+            {
+                if(fmod_sys.Samples.Any(n => n.RefID == note.RefID))
+                {
+                    sample_times.Add(note);
+                }
+            }
+
+            sample_times = sample_times.OrderBy(o => o.MsStart).ToList();
+            long time = Helpers.HighResolutionDateTime.timenow;
+            foreach(var toplay in sample_times)
+            {
+                long elapsed_ms = Helpers.HighResolutionDateTime.timenow - time;
+                while (elapsed_ms < toplay.MsStart)
+                {
+                    elapsed_ms = Helpers.HighResolutionDateTime.timenow - time;
+                }
+                //Console.WriteLine(elapsed_ms);
+                fmod_sys.PlaySample(toplay.RefID);
             }
         }
 
@@ -319,7 +345,7 @@ namespace O2JamUtils
                 if (!ext_renderer)
                 {
                     if (note.NoteType == 4) note.Value += 1000;
-                    osu_note.SampleFile = $"M{note.Value}.ogg";
+                    osu_note.RefID = note.Value;
                 }
 
                 if (osu_note.Channel < 9)

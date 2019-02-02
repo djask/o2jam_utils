@@ -133,7 +133,7 @@ namespace O2JamUtils
 
                 for (int i = 0; i < sample_count; i++)
                 {
-                    FMOD.CREATESOUNDEXINFO exinfo;
+                    FMOD.CREATESOUNDEXINFO exinfo = new FMOD.CREATESOUNDEXINFO();
 
                     long remaining_bytes = buf.Capacity - buf.Position;
                     if (remaining_bytes < 52)
@@ -182,15 +182,16 @@ namespace O2JamUtils
                     sample.RefID = note_ref;
                     sample.FileSize = sample_size;
                     sample.BinData = sample_data;
-                    FMOD.Sound sound;
+                    FMOD.Sound fmod_sound;
 
                     exinfo.length = sample.FileSize;
+                    exinfo.cbsize = Marshal.SizeOf(exinfo);
                     FMOD.MODE mode = FMOD.MODE.OPENMEMORY;
                     if (stream) mode |= FMOD.MODE.CREATESTREAM;
                     else mode |= FMOD.MODE.CREATESAMPLE;
 
-                    var result = fmod_sys.createSound(Encoding.ASCII.GetString(sample_name), mode, out sound);
-                    sample.Data = sound;
+                    var result = fmod_sys.createSound(sample.BinData, mode, ref exinfo, out fmod_sound);
+                    sample.Data = fmod_sound;
                     sample.AsStream = stream;
                     samples.Add(sample);
                 }
@@ -305,10 +306,10 @@ namespace O2JamUtils
                     writer.Write(chunk_size);
                     writer.Write(wav_data);
                 }
-                exinfo.cbsize = System.Runtime.InteropServices.Marshal.SizeOf(exinfo);
+                exinfo.cbsize = Marshal.SizeOf(exinfo);
                 exinfo.length = sample.FileSize;
                 FMOD.Sound fmod_sound;
-                FMOD.RESULT result = fmod_sys.createSound(Encoding.ASCII.GetString(sample_name), mode, out fmod_sound);
+                FMOD.RESULT result = fmod_sys.createSound(sample.BinData, mode, ref exinfo, out fmod_sound);
                 sample.Data = fmod_sound;
                 samples.Add(sample);
             }
@@ -319,13 +320,15 @@ namespace O2JamUtils
             {
                 byte[] sample_name;
                 int sample_size;
-                file_offset += 36;
                 using (var buf = f.CreateViewStream(file_offset, 36, MemoryMappedFileAccess.Read))
                 using(BinaryReader reader = new BinaryReader(buf))
                 {
                     sample_name = reader.ReadBytes(32);
                     sample_size = reader.ReadInt32();
                 }
+
+                file_offset += 36;
+
 
                 if (sample_size == 0)
                 {
@@ -355,8 +358,11 @@ namespace O2JamUtils
                     }
                 }
 
+                exinfo.length = (uint)sample_size;
+                exinfo.cbsize = Marshal.SizeOf(exinfo);
+
                 FMOD.Sound fmod_sound;
-                fmod_sys.createSound(Encoding.ASCII.GetString(sample_name), mode, out fmod_sound);
+                var result = fmod_sys.createSound(sample.BinData, mode, ref exinfo, out fmod_sound);
                 sample.Data = fmod_sound;
                 samples.Add(sample);
 
