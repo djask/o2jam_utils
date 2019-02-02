@@ -179,7 +179,7 @@ namespace O2JamUtils
                     String filename = $"M{note_ref}.ogg";
 
                     FMODSample sample = new FMODSample();
-                    sample.RefID = note_ref;
+                    sample.RefID = note_ref += 1;
                     sample.FileSize = sample_size;
                     sample.BinData = sample_data;
                     FMOD.Sound fmod_sound;
