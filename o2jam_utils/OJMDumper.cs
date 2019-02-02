@@ -69,6 +69,15 @@ namespace O2JamUtils
             0x04, 0x00
         };
 
+        public class FMODSample
+        {
+            public ushort RefID { get; set; }
+            public uint FileSize { get; set; }
+            public FMOD.Sound Data { get; set; }
+            public byte[] BinData { get; set; }
+            public Boolean AsStream { get; set; }
+        }
+
         public static String GetType(string path)
         {
             byte[] signature = new byte[3];
@@ -80,7 +89,7 @@ namespace O2JamUtils
             return Encoding.Default.GetString(signature);
         }
 
-        public static void DumpFile(string path, string outdir)
+        public static List<FMODSample> ExtractSamples(string path, FMOD.System fmod_sys, Boolean stream)
         {
             int signature;
             MemoryMappedFile f = Helpers.MemFile(path);
@@ -89,21 +98,25 @@ namespace O2JamUtils
             using (BinaryReader reader = new BinaryReader(vs))
                 signature = reader.ReadInt32();
 
+            List<FMODSample> samples = new List<FMODSample>();
+
             switch (signature)
             {
                 case M30_SIGNATURE:
-                    ParseM30(f, path, outdir);
+                    ParseM30(f, fmod_sys, samples, stream);
                     break;
                 case OMC_SIGNATURE:
                 case OJM_SIGNATURE:
-                    ParseOMC(f, outdir);
+                    ParseOMC(f, fmod_sys, samples, stream);
                     break;
             }
+
+            return samples;
         }
 
-        private static void ParseM30(MemoryMappedFile f, String path, String out_dir)
+        private static void ParseM30(MemoryMappedFile f, FMOD.System fmod_sys, List<FMODSample> samples, Boolean stream)
         {
-            MemoryMappedViewStream buf = f.CreateViewStream(4,24, MemoryMappedFileAccess.Read);
+            MemoryMappedViewStream buf = f.CreateViewStream(4, 24, MemoryMappedFileAccess.Read);
             BinaryReader reader = new BinaryReader(buf);
 
             // header
@@ -120,6 +133,8 @@ namespace O2JamUtils
 
                 for (int i = 0; i < sample_count; i++)
                 {
+                    FMOD.CREATESOUNDEXINFO exinfo;
+
                     long remaining_bytes = buf.Capacity - buf.Position;
                     if (remaining_bytes < 52)
                     {
@@ -127,17 +142,17 @@ namespace O2JamUtils
                     }
 
                     byte[] sample_name = reader.ReadBytes(32);
-                    int sample_size = reader.ReadInt32();
+                    uint sample_size = reader.ReadUInt32();
 
                     short codec_code = reader.ReadInt16();
                     short codec_code2 = reader.ReadInt16();
 
                     int music_flag = reader.ReadInt32();
-                    short note_ref = reader.ReadInt16();
+                    ushort note_ref = reader.ReadUInt16();
                     short unk_zero = reader.ReadInt16();
                     int pcm_samples = reader.ReadInt32();
 
-                    byte[] sample_data = reader.ReadBytes(sample_size);
+                    byte[] sample_data = reader.ReadBytes((int)sample_size);
 
                     switch (encryption_flag)
                     {
@@ -148,14 +163,11 @@ namespace O2JamUtils
                     }
 
                     //normal note
-                    int value = note_ref + 2;
-                    String filename = $"M{value}.ogg";
 
                     //background note
                     if (codec_code == 0)
                     {
-                        value = 1000 + note_ref;
-                        filename = $"W{value}.ogg";
+                        note_ref += 1000;
                     }
 
                     //unknown sound
@@ -164,10 +176,23 @@ namespace O2JamUtils
                         Console.WriteLine("not recognized sample type");
                     }
 
-                    //write the filename
-                    String out_file = Path.Combine(out_dir, filename);
-                    using (BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create)))
-                        writer.Write(sample_data);
+                    String filename = $"M{note_ref}.ogg";
+
+                    FMODSample sample = new FMODSample();
+                    sample.RefID = note_ref;
+                    sample.FileSize = sample_size;
+                    sample.BinData = sample_data;
+                    FMOD.Sound sound;
+
+                    exinfo.length = sample.FileSize;
+                    FMOD.MODE mode = FMOD.MODE.OPENMEMORY;
+                    if (stream) mode |= FMOD.MODE.CREATESTREAM;
+                    else mode |= FMOD.MODE.CREATESAMPLE;
+
+                    var result = fmod_sys.createSound(Encoding.ASCII.GetString(sample_name), mode, out sound);
+                    sample.Data = sound;
+                    sample.AsStream = stream;
+                    samples.Add(sample);
                 }
             }
         }
@@ -183,71 +208,87 @@ namespace O2JamUtils
             }
         }
 
-        private static void ParseOMC(MemoryMappedFile f, String out_dir)
+        private static void ParseOMC(MemoryMappedFile f, FMOD.System fmod_sys,List<FMODSample> samples, Boolean stream)
         {
-            MemoryMappedViewStream buf = f.CreateViewStream(4, 16, MemoryMappedFileAccess.Read);
-            BinaryReader reader = new BinaryReader(buf);
+            FMOD.MODE mode = FMOD.MODE.OPENMEMORY;
+            if (stream) mode |= FMOD.MODE.CREATESTREAM;
+            else mode |= FMOD.MODE.CREATESAMPLE;
 
-            // header
-            short wav_count = reader.ReadInt16(); //wav count
-            short ogg_count = reader.ReadInt16(); //ogg count
-            int wav_start = reader.ReadInt32();
-            int ogg_start = reader.ReadInt32();
-            int filesize = reader.ReadInt32();
+            int file_offset = 0;
+            short wav_count, ogg_count;
+            int wav_start, ogg_start, filesize;
+            using (MemoryMappedViewAccessor buf = f.CreateViewAccessor(4, 16, MemoryMappedFileAccess.Read))
+            {
+                // header
+                wav_count = buf.ReadInt16(file_offset); file_offset += 2; //wav count
+                ogg_count = buf.ReadInt16(file_offset); file_offset += 2; //ogg count
+                wav_start = buf.ReadInt32(file_offset); file_offset += 4;
+                ogg_start = buf.ReadInt32(file_offset); file_offset += 4;
+                filesize = buf.ReadInt32(file_offset); file_offset += 4;
+            }
 
-            int file_offset = 20;
-            int sample_id = 2;
+            file_offset = 20;
+            int sample_id = 1;
 
             acc_keybyte = 0xFF;
             acc_counter = 0;
-            
+
+            FMOD.CREATESOUNDEXINFO exinfo = new FMOD.CREATESOUNDEXINFO();
+
             //read wav data first this doesn't really work yet
-            while(file_offset < ogg_start)
+            while (file_offset < ogg_start)
             {
-                buf = f.CreateViewStream(file_offset, 56, MemoryMappedFileAccess.Read);
-                reader = new BinaryReader(buf);
+                //some package variables
+                byte[] sample_name = new byte[32];
+                short audio_format, num_channels, block_align, bits_per_sample;
+                int sample_rate, bit_rate, unk_data, chunk_size;
 
-                //advance 56 bytes per header
-                file_offset += 56;
-
-                //WAV DATA HEADERS
-                //name of sample
-                byte[] sample_name = reader.ReadBytes(32);
-
-                //wav metadata
-                short audio_format = reader.ReadInt16();
-                short num_channels = reader.ReadInt16();
-                int sample_rate = reader.ReadInt32();
-                int bit_rate = reader.ReadInt32();
-                short block_align = reader.ReadInt16();
-                short bits_per_sample = reader.ReadInt16();
-                int unk_data = reader.ReadInt32();
-
-                //sample size
-                int chunk_size = reader.ReadInt32();
-
-                //0 size wav, go to next
-                if (chunk_size == 0)
+                using (MemoryMappedViewAccessor buf = f.CreateViewAccessor(file_offset, 56, MemoryMappedFileAccess.Read))
                 {
-                    sample_id++;
-                    continue;
+                    long pos = 0;
+                    //WAV DATA HEADERS
+                    //name of sample
+                    buf.ReadArray(pos, sample_name, 0, 32); pos += 32;
+
+                    //wav metadata
+                    audio_format = buf.ReadInt16(pos); pos += 2;
+                    num_channels = buf.ReadInt16(pos); pos += 2;
+                    sample_rate = buf.ReadInt32(pos); pos += 4;
+                    bit_rate = buf.ReadInt32(pos); pos += 4;
+                    block_align = buf.ReadInt16(pos); pos += 2;
+                    bits_per_sample = buf.ReadInt16(pos); pos += 2;
+                    unk_data = buf.ReadInt32(pos); pos += 4;
+
+                    //sample size
+                    chunk_size = buf.ReadInt32(pos); pos += 4;
+
+                    //0 size wav, go to next
+                    if (chunk_size == 0)
+                    {
+                        sample_id++;
+                        continue;
+                    }
                 }
 
-                buf = f.CreateViewStream(file_offset, chunk_size, MemoryMappedFileAccess.Read);
                 file_offset += chunk_size;
-                reader = new BinaryReader(buf);
-
-                //basically get remaining data
                 byte[] wav_data = new byte[chunk_size];
-                buf.Read(wav_data, 0, chunk_size);
+
+                using (var buf = f.CreateViewAccessor(file_offset, chunk_size, MemoryMappedFileAccess.Read))
+                {
+                    //basically get remaining data
+                    buf.ReadArray(0, wav_data, 0, chunk_size);
+                }
                 wav_data = Rearrange(wav_data);
                 wav_data = OMC_xor(wav_data);
 
+                FMODSample sample = new FMODSample();
+                sample.FileSize = (uint)filesize;
+                sample.AsStream = stream;
+
                 //write the filename can't be bothered finding out the encoding
-                sample_name = sample_name.Where(i => i != 0).ToArray();
-                string filename = $"M{sample_id}.wav";
-                String out_file = Path.Combine(out_dir, filename);
-                using (BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create)))
+                sample.BinData = new byte[chunk_size + 36];
+                using (var bstream = new MemoryStream(sample.BinData))
+                using (BinaryWriter writer = new BinaryWriter(bstream))
                 {
                     writer.Write("RIFF");
                     writer.Write(chunk_size + 36);
@@ -264,19 +305,27 @@ namespace O2JamUtils
                     writer.Write(chunk_size);
                     writer.Write(wav_data);
                 }
-
+                exinfo.cbsize = System.Runtime.InteropServices.Marshal.SizeOf(exinfo);
+                exinfo.length = sample.FileSize;
+                FMOD.Sound fmod_sound;
+                FMOD.RESULT result = fmod_sys.createSound(Encoding.ASCII.GetString(sample_name), mode, out fmod_sound);
+                sample.Data = fmod_sound;
+                samples.Add(sample);
             }
-
-            sample_id = 1002; //ogg uses 1000+
+            file_offset = ogg_start;
+            sample_id = 1001; //ogg uses 1000+
             byte[] tmp_buffer = new byte[1024];
             while (file_offset < filesize) //read ogg data
             {
-                buf = f.CreateViewStream(file_offset, 36, MemoryMappedFileAccess.Read);
-                reader = new BinaryReader(buf);
+                byte[] sample_name;
+                int sample_size;
                 file_offset += 36;
-
-                byte[] sample_name = reader.ReadBytes(32);
-                int sample_size = reader.ReadInt32();
+                using (var buf = f.CreateViewStream(file_offset, 36, MemoryMappedFileAccess.Read))
+                using(BinaryReader reader = new BinaryReader(buf))
+                {
+                    sample_name = reader.ReadBytes(32);
+                    sample_size = reader.ReadInt32();
+                }
 
                 if (sample_size == 0)
                 {
@@ -284,29 +333,35 @@ namespace O2JamUtils
                     continue;
                 }
 
-                using (buf = f.CreateViewStream(file_offset, sample_size, MemoryMappedFileAccess.Read))
-                {
-                    reader = new BinaryReader(buf);
-                    file_offset += sample_size;
+                FMODSample sample = new FMODSample();
 
+                sample.BinData = new byte[sample_size];
+                sample.AsStream = stream;
+                sample.FileSize = (uint)sample_size;
+                sample.RefID = (ushort)sample_id;
+
+                using (var buf = f.CreateViewStream(file_offset, sample_size, MemoryMappedFileAccess.Read))
+                using (BinaryReader reader = new BinaryReader(buf)) { 
                     //write the filename
                     sample_name = sample_name.Where(i => i != 0).ToArray();
-                    string decname = Encoding.GetEncoding(936).GetString(sample_name);
-                    string filename = $"M{sample_id - 1000}.ogg";
-                    String out_file = Path.Combine(out_dir, filename);
-                    using (BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create)))
+                    using (var bstream = new MemoryStream(sample.BinData))
+                    using (BinaryWriter writer = new BinaryWriter(bstream))
                     {
-
                         while (reader.BaseStream.Position != reader.BaseStream.Length)
                         {
                             tmp_buffer = reader.ReadBytes(1024);
                             writer.Write(tmp_buffer);
                         }
-                        writer.Close();
-                        sample_id++;
                     }
                 }
 
+                FMOD.Sound fmod_sound;
+                fmod_sys.createSound(Encoding.ASCII.GetString(sample_name), mode, out fmod_sound);
+                sample.Data = fmod_sound;
+                samples.Add(sample);
+
+                file_offset += sample_size;
+                sample_id++;
             }
         }
 
@@ -347,7 +402,7 @@ namespace O2JamUtils
             byte[] raw_data = new byte[len];
             System.Array.Copy(encoded_data, raw_data, 0);
 
-            for(int i = 0; i < 17; i++)
+            for (int i = 0; i < 17; i++)
             {
                 //i think this works properly
                 System.Array.ConstrainedCopy(encoded_data, i, raw_data, REARRANGE_TABLE[key], block_size);

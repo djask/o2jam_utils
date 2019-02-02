@@ -93,21 +93,8 @@ namespace O2JamUtils
             if(ojnHeader.level[0] < ojnHeader.level[1] || ojnHeader.level[0] < ojnHeader.level[2])
                 CreateDiff(outFolder, ojnHeader, Diff.EX);
 
-            //dump the media contents
-            if (!ext_renderer) OJMDump.DumpFile(ojmPath, outFolder);
-            else
-            {
-                //this isn't used yet
-                string render = keysound_flag ? "realtime" : "quick";
-                var p = new Process();
-                p.StartInfo = new ProcessStartInfo(renderer_path, $"{ojn_path} --format mp3 --outfile audio --rendermode quick")
-                {
-                    UseShellExecute = false
-                };
-                p.StartInfo.WorkingDirectory = outFolder;
-                p.Start();
-                p.WaitForExit();
-            }
+            RenderSystem fmod_sys = new RenderSystem(true);
+            fmod_sys.LoadSamples(ojmPath, true);
 
             return outFolder;
         }
@@ -331,8 +318,8 @@ namespace O2JamUtils
                 }
                 if (!ext_renderer)
                 {
-                    if (note.Value > 1000) osu_note.SampleFile = $"M{note.Value - 999}.ogg";
-                    else if (note.Value > 2) osu_note.SampleFile = $"M{note.Value + 1}.ogg";
+                    if (note.NoteType == 4) note.Value += 1000;
+                    osu_note.SampleFile = $"M{note.Value}.ogg";
                 }
 
                 if (osu_note.Channel < 9)
