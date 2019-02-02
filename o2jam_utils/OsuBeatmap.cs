@@ -331,8 +331,7 @@ namespace O2JamUtils
                 }
                 if (!ext_renderer)
                 {
-                    if (note.Value > 1000) osu_note.SampleFile = $"M{note.Value - 999}.ogg";
-                    else if (note.Value > 2) osu_note.SampleFile = $"M{note.Value + 1}.ogg";
+                    osu_note.SampleFile = $"{note.Value}.ogg";
                 }
 
                 if (osu_note.Channel < 9)
