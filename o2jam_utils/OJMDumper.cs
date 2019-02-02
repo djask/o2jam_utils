@@ -147,15 +147,10 @@ namespace O2JamUtils
                         default: break;
                     }
 
-                    //normal note
-                    int value = note_ref + 2;
-                    String filename = $"M{value}.ogg";
-
                     //background note
                     if (codec_code == 0)
                     {
-                        value = 1000 + note_ref;
-                        filename = $"W{value}.ogg";
+                        note_ref += 1000;
                     }
 
                     //unknown sound
@@ -163,6 +158,10 @@ namespace O2JamUtils
                     {
                         Console.WriteLine("not recognized sample type");
                     }
+
+                    note_ref += 1; // in accordance to the note refs on the note events
+
+                    string filename = $"{note_ref}.ogg";
 
                     //write the filename
                     String out_file = Path.Combine(out_dir, filename);
@@ -196,7 +195,7 @@ namespace O2JamUtils
             int filesize = reader.ReadInt32();
 
             int file_offset = 20;
-            int sample_id = 2;
+            int sample_id = 1;
 
             acc_keybyte = 0xFF;
             acc_counter = 0;
@@ -245,7 +244,7 @@ namespace O2JamUtils
 
                 //write the filename can't be bothered finding out the encoding
                 sample_name = sample_name.Where(i => i != 0).ToArray();
-                string filename = $"M{sample_id}.wav";
+                string filename = $"{sample_id}.wav";
                 String out_file = Path.Combine(out_dir, filename);
                 using (BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create)))
                 {
@@ -267,7 +266,7 @@ namespace O2JamUtils
 
             }
 
-            sample_id = 1002; //ogg uses 1000+
+            sample_id = 1001; //ogg uses 1000+
             byte[] tmp_buffer = new byte[1024];
             while (file_offset < filesize) //read ogg data
             {
@@ -292,7 +291,7 @@ namespace O2JamUtils
                     //write the filename
                     sample_name = sample_name.Where(i => i != 0).ToArray();
                     string decname = Encoding.GetEncoding(936).GetString(sample_name);
-                    string filename = $"M{sample_id - 1000}.ogg";
+                    string filename = $"{sample_id}.ogg";
                     String out_file = Path.Combine(out_dir, filename);
                     using (BinaryWriter writer = new BinaryWriter(File.Open(out_file, FileMode.Create)))
                     {
