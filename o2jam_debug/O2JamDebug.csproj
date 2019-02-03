@@ -6,8 +6,8 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{08974887-3865-452D-A60F-FD74398E8CB6}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>O2JamDebug</RootNamespace>
-    <AssemblyName>O2JamDebug</AssemblyName>
+    <RootNamespace>O2JamCLI</RootNamespace>
+    <AssemblyName>O2JamCLI</AssemblyName>
     <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>

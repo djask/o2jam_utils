@@ -103,18 +103,39 @@ namespace O2JamUtils
             switch (signature)
             {
                 case M30_SIGNATURE:
-                    ParseM30(f, fmod_sys, samples, stream);
+                    ParseM30(f, fmod_sys:fmod_sys, samples:samples, stream:stream);
                     break;
                 case OMC_SIGNATURE:
                 case OJM_SIGNATURE:
-                    ParseOMC(f, fmod_sys, samples, stream);
+                    ParseOMC(f, fmod_sys: fmod_sys, samples: samples, stream: stream);
                     break;
             }
 
             return samples;
         }
 
-        private static void ParseM30(MemoryMappedFile f, FMOD.System fmod_sys, List<FMODSample> samples, Boolean stream)
+        public static void DumpSamples(string path, string outpath)
+        {
+            int signature;
+            MemoryMappedFile f = Helpers.MemFile(path);
+
+            using (MemoryMappedViewStream vs = f.CreateViewStream(0L, 0L, MemoryMappedFileAccess.Read))
+            using (BinaryReader reader = new BinaryReader(vs))
+                signature = reader.ReadInt32();
+
+            switch (signature)
+            {
+                case M30_SIGNATURE:
+                    ParseM30(f, outpath:outpath);
+                    break;
+                case OMC_SIGNATURE:
+                case OJM_SIGNATURE:
+                    ParseOMC(f, outpath:outpath);
+                    break;
+            }
+        }
+
+        private static void ParseM30(MemoryMappedFile f, FMOD.System fmod_sys = null, List<FMODSample> samples = null, Boolean stream = false, string outpath = null)
         {
             MemoryMappedViewStream buf = f.CreateViewStream(4, 24, MemoryMappedFileAccess.Read);
             BinaryReader reader = new BinaryReader(buf);
@@ -163,11 +184,12 @@ namespace O2JamUtils
                     }
 
                     //normal note
+                    //note_ref += 1;
 
                     //background note
                     if (codec_code == 0)
                     {
-                        note_ref += 1000;
+                        note_ref += 1001;
                     }
 
                     //unknown sound
@@ -176,24 +198,34 @@ namespace O2JamUtils
                         Console.WriteLine("not recognized sample type");
                     }
 
-                    String filename = $"M{note_ref}.ogg";
+                    String filename = $"{note_ref}.ogg";
 
-                    FMODSample sample = new FMODSample();
-                    sample.RefID = note_ref += 1;
-                    sample.FileSize = sample_size;
-                    sample.BinData = sample_data;
-                    FMOD.Sound fmod_sound;
+                    if (fmod_sys != null)
+                    {
+                        FMODSample sample = new FMODSample();
+                        sample.RefID = note_ref += 1;
+                        sample.FileSize = sample_size;
+                        sample.BinData = sample_data;
+                        FMOD.Sound fmod_sound;
 
-                    exinfo.length = sample.FileSize;
-                    exinfo.cbsize = Marshal.SizeOf(exinfo);
-                    FMOD.MODE mode = FMOD.MODE.OPENMEMORY;
-                    if (stream) mode |= FMOD.MODE.CREATESTREAM;
-                    else mode |= FMOD.MODE.CREATESAMPLE;
+                        exinfo.length = sample.FileSize;
+                        exinfo.cbsize = Marshal.SizeOf(exinfo);
+                        FMOD.MODE mode = FMOD.MODE.OPENMEMORY;
+                        if (stream) mode |= FMOD.MODE.CREATESTREAM;
+                        else mode |= FMOD.MODE.CREATESAMPLE;
 
-                    var result = fmod_sys.createSound(sample.BinData, mode, ref exinfo, out fmod_sound);
-                    sample.Data = fmod_sound;
-                    sample.AsStream = stream;
-                    samples.Add(sample);
+                        var result = fmod_sys.createSound(sample.BinData, mode, ref exinfo, out fmod_sound);
+                        sample.Data = fmod_sound;
+                        sample.AsStream = stream;
+                        samples.Add(sample);
+                    }
+                    else if (outpath != null)
+                    {
+                        using (BinaryWriter writer = new BinaryWriter(File.Open(Path.Combine(outpath,filename), FileMode.Create)))
+                        {
+                            writer.Write(sample_data);
+                        }
+                    }
                 }
             }
         }
@@ -209,11 +241,17 @@ namespace O2JamUtils
             }
         }
 
-        private static void ParseOMC(MemoryMappedFile f, FMOD.System fmod_sys,List<FMODSample> samples, Boolean stream)
+        private static void ParseOMC(MemoryMappedFile f, FMOD.System fmod_sys = null,List<FMODSample> samples = null, Boolean stream = false, string outpath = null)
         {
-            FMOD.MODE mode = FMOD.MODE.OPENMEMORY;
-            if (stream) mode |= FMOD.MODE.CREATESTREAM;
-            else mode |= FMOD.MODE.CREATESAMPLE;
+            FMOD.MODE mode = FMOD.MODE.DEFAULT;
+            FMOD.CREATESOUNDEXINFO exinfo = new FMOD.CREATESOUNDEXINFO();
+
+            if (fmod_sys != null)
+            {
+                mode = FMOD.MODE.OPENMEMORY;
+                if (stream) mode |= FMOD.MODE.CREATESTREAM;
+                else mode |= FMOD.MODE.CREATESAMPLE;
+            }
 
             int file_offset = 0;
             short wav_count, ogg_count;
@@ -233,8 +271,6 @@ namespace O2JamUtils
 
             acc_keybyte = 0xFF;
             acc_counter = 0;
-
-            FMOD.CREATESOUNDEXINFO exinfo = new FMOD.CREATESOUNDEXINFO();
 
             //read wav data first this doesn't really work yet
             while (file_offset < ogg_start)
@@ -282,13 +318,9 @@ namespace O2JamUtils
                 wav_data = Rearrange(wav_data);
                 wav_data = OMC_xor(wav_data);
 
-                FMODSample sample = new FMODSample();
-                sample.FileSize = (uint)filesize;
-                sample.AsStream = stream;
-
                 //write the filename can't be bothered finding out the encoding
-                sample.BinData = new byte[chunk_size + 36];
-                using (var bstream = new MemoryStream(sample.BinData))
+                byte[] bindata = new byte[chunk_size + 36];
+                using (var bstream = new MemoryStream(bindata))
                 using (BinaryWriter writer = new BinaryWriter(bstream))
                 {
                     writer.Write("RIFF");
@@ -306,12 +338,30 @@ namespace O2JamUtils
                     writer.Write(chunk_size);
                     writer.Write(wav_data);
                 }
-                exinfo.cbsize = Marshal.SizeOf(exinfo);
-                exinfo.length = sample.FileSize;
-                FMOD.Sound fmod_sound;
-                FMOD.RESULT result = fmod_sys.createSound(sample.BinData, mode, ref exinfo, out fmod_sound);
-                sample.Data = fmod_sound;
-                samples.Add(sample);
+
+                string filename = $"{sample_id}.wav";
+
+                if (fmod_sys != null)
+                {
+                    FMODSample sample = new FMODSample();
+                    sample.FileSize = (uint)filesize;
+                    sample.AsStream = stream;
+                    sample.BinData = bindata;
+
+                    exinfo.cbsize = Marshal.SizeOf(exinfo);
+                    exinfo.length = sample.FileSize;
+                    FMOD.Sound fmod_sound;
+                    FMOD.RESULT result = fmod_sys.createSound(sample.BinData, mode, ref exinfo, out fmod_sound);
+                    sample.Data = fmod_sound;
+                    samples.Add(sample);
+                } 
+                else if(outpath != null)
+                {
+                    using (BinaryWriter writer = new BinaryWriter(File.Open(Path.Combine(outpath, filename), FileMode.Create)))
+                    {
+                        writer.Write(bindata);
+                    }
+                }
             }
             file_offset = ogg_start;
             sample_id = 1001; //ogg uses 1000+
@@ -336,35 +386,59 @@ namespace O2JamUtils
                     continue;
                 }
 
-                FMODSample sample = new FMODSample();
+                if (fmod_sys != null)
+                {
 
-                sample.BinData = new byte[sample_size];
-                sample.AsStream = stream;
-                sample.FileSize = (uint)sample_size;
-                sample.RefID = (ushort)sample_id;
+                    FMODSample sample = new FMODSample();
 
-                using (var buf = f.CreateViewStream(file_offset, sample_size, MemoryMappedFileAccess.Read))
-                using (BinaryReader reader = new BinaryReader(buf)) { 
-                    //write the filename
-                    sample_name = sample_name.Where(i => i != 0).ToArray();
-                    using (var bstream = new MemoryStream(sample.BinData))
-                    using (BinaryWriter writer = new BinaryWriter(bstream))
+                    sample.BinData = new byte[sample_size];
+                    sample.AsStream = stream;
+                    sample.FileSize = (uint)sample_size;
+                    sample.RefID = (ushort)sample_id;
+
+                    using (var buf = f.CreateViewStream(file_offset, sample_size, MemoryMappedFileAccess.Read))
+                    using (BinaryReader reader = new BinaryReader(buf))
                     {
-                        while (reader.BaseStream.Position != reader.BaseStream.Length)
+                        //write the filename
+                        sample_name = sample_name.Where(i => i != 0).ToArray();
+                        using (var bstream = new MemoryStream(sample.BinData))
+                        using (BinaryWriter writer = new BinaryWriter(bstream))
                         {
-                            tmp_buffer = reader.ReadBytes(1024);
-                            writer.Write(tmp_buffer);
+                            while (reader.BaseStream.Position != reader.BaseStream.Length)
+                            {
+                                tmp_buffer = reader.ReadBytes(1024);
+                                writer.Write(tmp_buffer);
+                            }
                         }
                     }
+
+                    exinfo.length = (uint)sample_size;
+                    exinfo.cbsize = Marshal.SizeOf(exinfo);
+
+                    FMOD.Sound fmod_sound;
+                    var result = fmod_sys.createSound(sample.BinData, mode, ref exinfo, out fmod_sound);
+                    sample.Data = fmod_sound;
+                    samples.Add(sample);
                 }
+                else if(outpath != null)
+                {
+                    string filename = Path.Combine(outpath, $"{sample_id}.ogg");
+                    using (var buf = f.CreateViewStream(file_offset, sample_size, MemoryMappedFileAccess.Read))
+                    using (BinaryReader reader = new BinaryReader(buf))
+                    {
+                        //write the filename
+                        sample_name = sample_name.Where(i => i != 0).ToArray();
+                        using (BinaryWriter writer = new BinaryWriter(File.Open(filename, FileMode.Create)))
+                        {
+                            while (reader.BaseStream.Position != reader.BaseStream.Length)
+                            {
+                                tmp_buffer = reader.ReadBytes(1024);
+                                writer.Write(tmp_buffer);
+                            }
+                        }
+                    }
 
-                exinfo.length = (uint)sample_size;
-                exinfo.cbsize = Marshal.SizeOf(exinfo);
-
-                FMOD.Sound fmod_sound;
-                var result = fmod_sys.createSound(sample.BinData, mode, ref exinfo, out fmod_sound);
-                sample.Data = fmod_sound;
-                samples.Add(sample);
+                }
 
                 file_offset += sample_size;
                 sample_id++;

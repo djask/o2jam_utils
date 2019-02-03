@@ -1,12 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.IO;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Threading;
+using System.Linq;
 
 namespace O2JamUtils
 {
@@ -55,18 +50,15 @@ namespace O2JamUtils
             }
         }
 
-        private Boolean ext_renderer;
-        private Boolean keysound_flag = false;
+        private Boolean virtual_mode;
 
         private List<MSTiming> OsuTimings { get; set; } = new List<MSTiming>();
-        private List<OsuNote> OsuNotes { get; set;  } = new List<OsuNote>();
-        private List<OsuNote> OsuSamples { get; set;  } = new List<OsuNote>();
+        private List<OsuNote> OsuNotes { get; set; } = new List<OsuNote>();
+        private List<OsuNote> OsuSamples { get; set; } = new List<OsuNote>();
 
         //dumps file contents and returns the new directory with the contents
-        public string BeatmapDump(string ojn_path, string out_dir, String renderer_path)
+        public string BeatmapDump(string ojn_path, string out_dir)
         {
-            ext_renderer = renderer_path != null ? true : false;
-
             //read ojn headers
             OJNData ojnHeader = new OJNData(ojn_path);
 
@@ -87,17 +79,27 @@ namespace O2JamUtils
             CreateDiff(outFolder, ojnHeader, Diff.HX);
 
             //write NX
-            if(ojnHeader.level[1] < ojnHeader.level[2])
+            if (ojnHeader.level[1] < ojnHeader.level[2])
                 CreateDiff(outFolder, ojnHeader, Diff.NX);
 
             //write EX
-            if(ojnHeader.level[0] < ojnHeader.level[1] || ojnHeader.level[0] < ojnHeader.level[2])
+            if (ojnHeader.level[0] < ojnHeader.level[1] || ojnHeader.level[0] < ojnHeader.level[2])
                 CreateDiff(outFolder, ojnHeader, Diff.EX);
 
-            FMODSystem fmod_sys = new FMODSystem(true);
-            fmod_sys.LoadSamples(ojmPath, true);
+            if (!virtual_mode)
+            {
+                FMODSystem fmod_sys = new FMODSystem(false);
+                fmod_sys.LoadSamples(ojmPath, false);
 
-            PlaySong(fmod_sys);
+                RenderToFile(fmod_sys, ojnHeader.time[2]);
+                //PlaySong(fmod_sys);
+                fmod_sys.ReleaseSystem();
+                File.Move("fmodoutput.wav", Path.Combine(outFolder, "output.wav"));
+            }
+            else
+            {
+                OJMDump.DumpSamples(ojmPath, outFolder);
+            }
 
             return outFolder;
         }
@@ -106,8 +108,8 @@ namespace O2JamUtils
         {
             NotePackage.Chart chart;
 
-            String diffname = null;
-            String diffex = null;
+            string diffname = null;
+            string diffex = null;
 
             switch (diff)
             {
@@ -123,13 +125,15 @@ namespace O2JamUtils
                 case Diff.HX:
                     chart = ojn_header.DumpHXPackage();
                     diffex = $"_HX_LVL{ojn_header.level[2]}";
+                    int no_samples = chart.Notes.GroupBy(x => x.Value).Count();
+                    virtual_mode = no_samples > 10 ? true : false;
                     break;
             }
             diffname = $"{ojn_header.Title}{diffex}.osu";
             diffname = Helpers.GetSafeFilename(diffname);
             diffname = Path.Combine(path, diffname);
 
-            string audio_file = ext_renderer ? "audio.mp3" : "virtual";
+            string audio_file = virtual_mode ? "virtual" : "output.wav";
 
             string[] general =
             {
@@ -190,7 +194,7 @@ namespace O2JamUtils
             GenNotes(chart.Notes);
 
             //as per osu specification
-            int[] column_map = new int[7]{ 36,109,182,255,328,401,474};
+            int[] column_map = new int[7] { 36, 109, 182, 255, 328, 401, 474 };
             using (StreamWriter w = new StreamWriter(File.Open(diffname, FileMode.Create)))
             {
                 w.Write("osu file format v14\n\n");
@@ -198,6 +202,14 @@ namespace O2JamUtils
                 foreach (var l in metadata) w.WriteLine(l);
                 foreach (var l in difficulty) w.WriteLine(l);
                 foreach (var l in events) w.WriteLine(l);
+
+                if (virtual_mode)
+                {
+                    foreach (var hit in OsuSamples)
+                    {
+                        w.Write($"5,{(int)hit.MsStart},0,\"{hit.RefID}.ogg\",100\n");
+                    }
+                }
 
                 w.WriteLine("\n\n[TimingPoints]");
                 foreach (var timing in OsuTimings)
@@ -216,20 +228,26 @@ namespace O2JamUtils
                 {
                     string line;
                     int vol = 0;
+                    string filename = "";
+                    if (virtual_mode)
+                    {
+                        vol = 100;
+                        filename = $"{note.RefID}.ogg";
+                    }
                     if (note.LN)
                     {
-                        line = $"{column_map[note.Channel]},0,{(int)note.MsStart},128,0,{(int)note.MsEnd}:0:0:0:{vol}:\n";
+                        line = $"{column_map[note.Channel]},0,{(int)note.MsStart},128,0,{(int)note.MsEnd}:0:0:0:{vol}:{filename}\n";
                     }
                     else
                     {
-                        line = $"{column_map[note.Channel]},0,{(int)note.MsStart},1,0,0:0:0:{vol}:\n";
+                        line = $"{column_map[note.Channel]},0,{(int)note.MsStart},1,0,0:0:0:{vol}:{filename}\n";
                     }
                     w.Write(line);
                 }
             }
         }
 
-        private void PlaySong(FMODSystem fmod_sys)
+        private List<OsuNote> GenSampleSequence(FMODSystem fmod_sys)
         {
             List<OsuNote> sample_times = new List<OsuNote>();
             foreach (var sample in OsuSamples)
@@ -241,15 +259,21 @@ namespace O2JamUtils
             }
             foreach (var note in OsuNotes)
             {
-                if(fmod_sys.Samples.Any(n => n.RefID == note.RefID))
+                if (fmod_sys.Samples.Any(n => n.RefID == note.RefID))
                 {
                     sample_times.Add(note);
                 }
             }
+            return sample_times;
+        }
+
+        private void PlaySong(FMODSystem fmod_sys)
+        {
+            List<OsuNote> sample_times = GenSampleSequence(fmod_sys);
 
             sample_times = sample_times.OrderBy(o => o.MsStart).ToList();
             long time = Helpers.HighResolutionDateTime.timenow;
-            foreach(var toplay in sample_times)
+            foreach (var toplay in sample_times)
             {
                 long elapsed_ms = Helpers.HighResolutionDateTime.timenow - time;
                 while (elapsed_ms < toplay.MsStart)
@@ -258,6 +282,30 @@ namespace O2JamUtils
                 }
                 //Console.WriteLine(elapsed_ms);
                 fmod_sys.PlaySample(toplay.RefID);
+            }
+        }
+
+        private void RenderToFile(FMODSystem fmod_sys, float duration)
+        {
+            List<OsuNote> sample_times = GenSampleSequence(fmod_sys);
+
+            sample_times = sample_times.OrderBy(o => o.MsStart).ToList();
+            float elapsed = 0.0f;
+            float rate = 1024.0f / 48000.0f * 1000.0f;
+            int index = 0;
+            OsuNote next_id = sample_times[index];
+
+            while (elapsed < duration * 1000 + 1000)
+            {
+                if (next_id != null && elapsed > next_id.MsStart)
+                {
+                    fmod_sys.PlaySample(next_id.RefID);
+                    index++;
+                    if (index < sample_times.Count()) next_id = sample_times[index];
+                    else next_id = null;
+                }
+                elapsed += rate;
+                fmod_sys.FmodSys.update();
             }
         }
 
@@ -298,7 +346,7 @@ namespace O2JamUtils
 
         private void GenNotes(List<NotePackage.NoteEvent> notes)
         {
-            foreach(var note in notes)
+            foreach (var note in notes)
             {
                 //Console.WriteLine($"channel {note.channel} start {note.measure_start} end {note.measure_end}");
                 //grab the last bpm change
@@ -334,7 +382,7 @@ namespace O2JamUtils
                 osu_note.MsStart = hit_start;
 
                 //grab the offset for the end of a long note (if needed)
-                if(note.NoteType == 3)
+                if (note.NoteType == 3)
                 {
                     float end_delta = note.MeasureEnd - next_bpm.MeasureStart;
                     float end_offset = next_bpm.MsPerMeasure * end_delta;
@@ -342,11 +390,9 @@ namespace O2JamUtils
                     osu_note.LN = true;
                     osu_note.MsEnd = hit_end;
                 }
-                if (!ext_renderer)
-                {
+
                     if (note.NoteType == 4) note.Value += 1000;
                     osu_note.RefID = note.Value;
-                }
 
                 if (osu_note.Channel < 9)
                 {

@@ -30,7 +30,7 @@ namespace O2JamUtils
         public string Noter { get; }
         public string OJMFile { get;  }
         private readonly int cover_size;
-        private readonly int[] time = new int[3];
+        public readonly int[] time = new int[3];
         private readonly int[] note_offset = new int[3];
         public int CoverOffset { get; }
 
